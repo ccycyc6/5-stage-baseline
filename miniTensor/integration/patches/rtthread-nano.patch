@@ -1,0 +1,323 @@
+diff --git a/rt-thread/bsp/MundusJyd/Makefile b/rt-thread/bsp/MundusJyd/Makefile
+index d7c2f6ed..3e58af82 100644
+--- a/rt-thread/bsp/MundusJyd/Makefile
++++ b/rt-thread/bsp/MundusJyd/Makefile
+@@ -7,6 +7,13 @@ BSP_DIR     := $(CURDIR)
+ BSP_INC_DIR := $(BSP_DIR)/include
+ NPC_AUTOCONF := $(NPC_HOME)/configs/build/csrc/include/autoconf.h
+ 
++# miniTensor integration sources (see miniTensor/integration/README.md).
++# MT_COMPAT_DIR holds minimal freestanding libc headers: the riscv64-unknown-elf
++# toolchain available on this machine ships without newlib.
++MT_HOME       ?= $(MUNDUS_HOME)/miniTensor
++MT_BSP_DIR    := $(MT_HOME)/integration/bsp
++MT_COMPAT_DIR := $(MT_BSP_DIR)/compat
++
+ COREMARK_PORT_DIR   := $(BSP_DIR)/coremark
+ COREMARK_SCRIPTS_DIR := $(COREMARK_PORT_DIR)/scripts
+ # Vendored, pinned EEMBC main snapshot.  COREMARK_ROOT remains overridable so
+@@ -74,7 +81,7 @@ COMMON_FLAGS := $(ARCH_FLAGS) $(MUNDUS_TUNE_FLAGS) \
+ 	-ffreestanding -fno-builtin -fno-common \
+ 	-fno-pic -fno-pie \
+ 	-ffunction-sections -fdata-sections -MMD -MP \
+-	-I$(BSP_INC_DIR) \
++	-I$(BSP_INC_DIR) -I$(MT_COMPAT_DIR) -I$(MT_BSP_DIR) \
+ 	-I$(RTT_ROOT)/include \
+ 	-I$(RTT_ROOT)/libcpu/risc-v/common \
+ 	-I$(RTT_ROOT)/components/finsh \
+@@ -121,25 +128,52 @@ KERNEL_C_SRCS := \
+ 	$(RTT_ROOT)/src/timer.c \
+ 	$(RTT_ROOT)/libcpu/risc-v/common/cpuport.c
+ 
+-BSP_C_SRCS := \
+-	$(BSP_DIR)/board.c \
+-	$(BSP_DIR)/console.c \
+-	$(COREMARK_PORT_DIR)/competition_app.c \
+-	$(COREMARK_PORT_DIR)/finsh_compat.c \
+-	$(RTT_ROOT)/components/finsh/shell.c \
+-	$(RTT_ROOT)/components/finsh/msh.c
++# CoreMark and the miniTensor drivers no longer fit together in the 32 KiB IROM
++# with this toolchain, so the benchmark can be dropped when the image only needs
++# to exercise the accelerator.
++MT_WITH_COREMARK ?= 1
+ 
++ifeq ($(MT_WITH_COREMARK),1)
++APP_ENTRY_SRC      := $(COREMARK_PORT_DIR)/competition_app.c
+ COREMARK_PORT_SRCS := $(COREMARK_PORT_DIR)/coremark_portme.c
+-COREMARK_C_SRCS := \
++COREMARK_C_SRCS    := \
+ 	$(COREMARK_SRC_DIR)/core_list_join.c \
+ 	$(COREMARK_SRC_DIR)/core_matrix.c \
+ 	$(COREMARK_SRC_DIR)/core_state.c \
+ 	$(COREMARK_SRC_DIR)/core_util.c \
+ 	$(COREMARK_SRC_DIR)/core_main.c
++COREMARK_PORT_OBJ  := $(OBJ_DIR)/coremark_portme.o
++else
++APP_ENTRY_SRC      := $(MT_BSP_DIR)/mt_main.c
++COREMARK_PORT_SRCS :=
++COREMARK_C_SRCS    :=
++COREMARK_PORT_OBJ  :=
++endif
++
++# miniTensor test/demo commands (mt.c, the driver, is always built).  The full
++# set does not fit in the 32 KiB IROM together with CoreMark under this
++# toolchain, so it is selectable:
++#   make ... MT_WITH_COREMARK=1 MT_TESTS="" image                # CoreMark only
++#   make ... MT_WITH_COREMARK=1 MT_TESTS="mt_app.c mt_conv.c" image
++MT_TESTS ?= mt_app.c mt_conv.c mt_net.c mt_detect.c mt_wide.c mt_res.c \
++            mt_yolocnn.c mt_yolomodel.c mt_yolo.c
++MT_TEST_SRCS := $(addprefix $(MT_BSP_DIR)/, $(MT_TESTS))
++
++BSP_C_SRCS := \
++	$(BSP_DIR)/board.c \
++	$(BSP_DIR)/console.c \
++	$(APP_ENTRY_SRC) \
++	$(COREMARK_PORT_DIR)/finsh_compat.c \
++	$(MT_BSP_DIR)/mt.c \
++	$(MT_TEST_SRCS) \
++	$(RTT_ROOT)/components/finsh/shell.c \
++	$(RTT_ROOT)/components/finsh/msh.c
+ 
++ifeq ($(MT_WITH_COREMARK),1)
+ ifeq ($(COREMARK_MATRIX_LINK_BOUNDARY),1)
+ COREMARK_FORCE_OBJS += $(OBJ_DIR)/cm_core_matrix.o
+ endif
++endif
+ 
+ COREMARK_CRC_CONFIG_STAMP := \
+ 	$(OBJ_DIR)/.crc-config-hw$(COREMARK_HW_CRC)-profile$(COREMARK_PROFILE)
+@@ -169,7 +203,7 @@ ASM_SRCS := \
+ COREMARK_OBJS := $(addprefix $(OBJ_DIR)/cm_,$(notdir $(COREMARK_C_SRCS:.c=.o)))
+ OBJS := $(addprefix $(OBJ_DIR)/,$(notdir $(KERNEL_C_SRCS:.c=.o))) \
+ 	$(addprefix $(OBJ_DIR)/,$(notdir $(BSP_C_SRCS:.c=.o))) \
+-	$(OBJ_DIR)/coremark_portme.o \
++	$(COREMARK_PORT_OBJ) \
+ 	$(addprefix $(OBJ_DIR)/,$(notdir $(ASM_SRCS:.S=.o))) \
+ 	$(OBJ_DIR)/bsp_timer.o \
+ 	$(OBJ_DIR)/bsp_trap.o \
+@@ -344,8 +378,32 @@ $(OBJ_DIR)/cm_core_matrix.o $(ELF): $(COREMARK_MATRIX_CONFIG_STAMP)
+ 
+ FORCE:
+ 
+-$(ELF): $(OBJS) $(LINKER_SCRIPT)
+-	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lgcc
++# Optional weight blob, linked into the uncached extension window.  Only built
++# when the packer has produced one, so a checkout without a model still builds.
++WEIGHTS_BIN := $(wildcard $(MT_HOME)/models/yc_weights.bin)
++ifneq ($(WEIGHTS_BIN),)
++WEIGHTS_OBJ := $(OBJ_DIR)/yc_weights.o
++EXTRA_OBJS  += $(WEIGHTS_OBJ)
++endif
++
++$(WEIGHTS_OBJ): $(WEIGHTS_BIN) | $(OBJ_DIR)
++	$(OBJCOPY) -I binary -O elf32-littleriscv -B riscv \
++		--rename-section .data=.weights,alloc,load,readonly,data,contents \
++		$< $@
++
++MODEL_BIN := $(wildcard $(MT_HOME)/models/ym_weights.bin)
++ifneq ($(MODEL_BIN),)
++MODEL_OBJ := $(OBJ_DIR)/ym_weights.o
++EXTRA_OBJS += $(MODEL_OBJ)
++endif
++
++$(MODEL_OBJ): $(MODEL_BIN) | $(OBJ_DIR)
++	$(OBJCOPY) -I binary -O elf32-littleriscv -B riscv \
++		--rename-section .data=.model,alloc,load,readonly,data,contents \
++		$< $@
++
++$(ELF): $(OBJS) $(EXTRA_OBJS) $(LINKER_SCRIPT)
++	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(EXTRA_OBJS) -lgcc
+ 	$(SIZE) $@
+ 
+ $(BIN): $(ELF)
+@@ -374,13 +432,17 @@ verify-coremark-source:
+ 
+ JYD_FAST_TIMER ?= 0
+ NPC_CCACHE_DISABLE ?= 1
++# 0 = zero-filled Verilator reset values.  The JYD platform currently hangs with
++# the upstream default of 2; see npc/Makefile VERILATOR_RESET.
++VERILATOR_RESET ?= 0
+ 
+ run: $(BIN)
+ 	@mkdir -p "$(COREMARK_RESULTS_DIR)"
+ 	@set -o pipefail; \
+ 	CCACHE_DISABLE=$(NPC_CCACHE_DISABLE) $(MAKE) -s -C $(NPC_HOME) wave \
+ 		MUNDUS_HOME=$(MUNDUS_HOME) NPC_HOME=$(NPC_HOME) \
+-		PLATFORM=jyd MODE=batch ISA=riscv32 JYD_FAST_TIMER=$(JYD_FAST_TIMER) PROGRAM=$(BIN) \
++		PLATFORM=jyd MODE=batch ISA=riscv32 JYD_FAST_TIMER=$(JYD_FAST_TIMER) \
++		VERILATOR_RESET=$(VERILATOR_RESET) PROGRAM=$(BIN) \
+ 		ARGS="--elf=$(ELF) --log=$(LOG) --branch-report=$(BRANCH_REPORT) --pipeline-report=$(PIPELINE_REPORT) --memory-report=$(MEMORY_REPORT) --stats-window=led0" \
+ 		git_commit= 2>&1 | tee "$(CONSOLE_LOG)"
+ 	@awk '\
+diff --git a/rt-thread/bsp/MundusJyd/coremark/finsh_compat.c b/rt-thread/bsp/MundusJyd/coremark/finsh_compat.c
+index 3fadceaa..5cbb71b9 100644
+--- a/rt-thread/bsp/MundusJyd/coremark/finsh_compat.c
++++ b/rt-thread/bsp/MundusJyd/coremark/finsh_compat.c
+@@ -2,35 +2,76 @@
+ 
+ #include <rtthread.h>
+ 
++/* The firmware links with -nostdlib, so it has to supply its own runtime.
++ *
++ * These carry __attribute__((used)) because the whole program is built with
++ * -flto: the compiler can decide late (after the point where it would have
++ * discarded an unreferenced definition) to lower a struct copy into a memcpy
++ * call, which then has no definition to bind to.  Marking them used keeps them
++ * in the LTO symbol table regardless. */
++#define MT_RUNTIME __attribute__((used))
++
+ /* Nano 3.1.5's built-in "ps" command references this symbol even when the
+- * optional FinSH command collection is not linked.  The competition image
+- * intentionally keeps only help/coremark/quit. */
+-long list_thread(void)
++ * optional FinSH command collection is not linked.  The accelerator image
++ * intentionally keeps only help/quit plus the miniTensor commands. */
++MT_RUNTIME long list_thread(void)
+ {
+     return 0;
+ }
+ 
+-void *memset(void *destination, int value, size_t count)
++MT_RUNTIME void *memset(void *destination, int value, size_t count)
+ {
+     return rt_memset(destination, value, (rt_ubase_t)count);
+ }
+ 
+-void *memcpy(void *destination, const void *source, size_t count)
++MT_RUNTIME void *memcpy(void *destination, const void *source, size_t count)
+ {
+     return rt_memcpy(destination, source, (rt_ubase_t)count);
+ }
+ 
+-size_t strlen(const char *str)
++MT_RUNTIME void *memmove(void *destination, const void *source, size_t count)
++{
++    return rt_memmove(destination, source, (rt_ubase_t)count);
++}
++
++MT_RUNTIME int memcmp(const void *left, const void *right, size_t count)
++{
++    const unsigned char *a = (const unsigned char *)left;
++    const unsigned char *b = (const unsigned char *)right;
++
++    while (count-- > 0u)
++    {
++        if (*a != *b)
++        {
++            return (int)*a - (int)*b;
++        }
++        a++;
++        b++;
++    }
++    return 0;
++}
++
++MT_RUNTIME size_t strlen(const char *str)
+ {
+     return (size_t)rt_strlen(str);
+ }
+ 
+-int strncmp(const char *left, const char *right, size_t count)
++MT_RUNTIME int strncmp(const char *left, const char *right, size_t count)
+ {
+     return (int)rt_strncmp(left, right, (rt_size_t)count);
+ }
+ 
+-char *strcpy(char *destination, const char *source)
++MT_RUNTIME int strcmp(const char *left, const char *right)
++{
++    while ((*left != '\0') && (*left == *right))
++    {
++        left++;
++        right++;
++    }
++    return (int)(unsigned char)*left - (int)(unsigned char)*right;
++}
++
++MT_RUNTIME char *strcpy(char *destination, const char *source)
+ {
+     char *result = destination;
+ 
+@@ -40,7 +81,23 @@ char *strcpy(char *destination, const char *source)
+     return result;
+ }
+ 
+-char *strcat(char *destination, const char *source)
++MT_RUNTIME char *strncpy(char *destination, const char *source, size_t count)
++{
++    char *result = destination;
++
++    while ((count > 0u) && (*source != '\0'))
++    {
++        *destination++ = *source++;
++        count--;
++    }
++    while (count-- > 0u)
++    {
++        *destination++ = '\0';
++    }
++    return result;
++}
++
++MT_RUNTIME char *strcat(char *destination, const char *source)
+ {
+     char *tail = destination + rt_strlen(destination);
+ 
+diff --git a/rt-thread/bsp/MundusJyd/linker.ld b/rt-thread/bsp/MundusJyd/linker.ld
+index e121a20d..62a527f6 100644
+--- a/rt-thread/bsp/MundusJyd/linker.ld
++++ b/rt-thread/bsp/MundusJyd/linker.ld
+@@ -6,7 +6,26 @@ ENTRY(_start)
+ MEMORY
+ {
+     IROM (rx)  : ORIGIN = 0x80000000, LENGTH = CONFIG_IROM_SIZE_BYTES
+-    DRAM (rwx) : ORIGIN = 0x80100000, LENGTH = 256K
++    /* The top 64 KiB (0x8013_0000-0x8013_FFFF) is reserved for the
++       miniTensor scratch buffers.  The CPU reaches it only through the
++       uncached alias 0x8033_0000, so the D-cache never holds a line of it
++       and no cache maintenance is required. */
++    DRAM (rwx) : ORIGIN = 0x80100000, LENGTH = 192K
++
++    /* The whole uncached extension window (0x8040_0000-0x80FF_FFFF, decoded by
++       perip_bridge).  Package-sized networks cannot carry their weights in
++       .rodata -- tiny-yolov3's convolutions alone are 8.8 MB against 192 KiB of
++       DRAM -- so the weights are a separate load, the way they would come from
++       external storage on a real board.  Being outside the cacheable window
++       also means the DMA sees them without any cache maintenance.
++
++       Both blobs share it: the small regression blob (.weights, ~25 KiB) is
++       placed first, and the complete tiny-yolov3 blob (.model, 8.7 MiB of
++       weights plus its input and per-stage goldens) immediately after it.
++       Putting them in one region is what lets a single run own the full 12 MiB:
++       the linker exports __model_start and the C side addresses the whole blob
++       relative to it, so the packer does not need to know the address. */
++    WEIGHTS (rw) : ORIGIN = 0x80400000, LENGTH = 12M
+ }
+ 
+ SECTIONS
+@@ -52,6 +71,25 @@ SECTIONS
+     __global_pointer$ = ADDR(.data) + 0x800;
+     __stack_top = ORIGIN(DRAM) + LENGTH(DRAM);
+ 
++    /* LAST: placing a section in another region moves the location counter, so
++       this must come after __heap_start/__stack_top or the DRAM overflow check
++       compares a weights address against the stack top. */
++    .weights : ALIGN(16)
++    {
++        __weights_start = .;
++        KEEP(*(.weights))
++        __weights_end = .;
++    } > WEIGHTS
++
++    /* Placed right after .weights inside the same region, so __model_start
++       lands on the second blob. */
++    .model : ALIGN(16)
++    {
++        __model_start = .;
++        KEEP(*(.model))
++        __model_end = .;
++    } > WEIGHTS
++
+     ASSERT(SIZEOF(.text) <= LENGTH(IROM), "MundusJyd IROM overflow")
+     ASSERT(__heap_start < __stack_top, "MundusJyd DRAM overflow")
+ }

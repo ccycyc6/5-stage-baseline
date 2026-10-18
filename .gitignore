@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------- build outputs
+build/
+obj_dir/
+obj_dir_*/
+*.o
+*.d
+*.a
+*.so
+*.elf
+*.bin
+*.hex
+*.map
+*.gch
+*.vcd
+*.fst
+*.saif
+*.vpd
+*.trc
+*.wave
+*.log
+
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# miniTensor reference workspace: the RTL is vendored under rtl/minitensor.
+# Keep integration/tools (golden generator) and integration/bsp (reference
+# firmware); drop the multi-hundred-MB simulation build and model blobs.
+miniTensor/obj_dir/
+miniTensor/models/
+miniTensor/**/obj_dir/
+miniTensor/**/__pycache__/
+
+# ---------------------------------------------------------------- Pango PDS
+*.pds
+*.prj
+*.bit
+*.fs
+*.sbit
+*.rpt
+*.pds_bak
+*.pdsbak
+*.log
+pango_run/
+impl/
+syn/
+place/
+route/
+
+# ---------------------------------------------------------------- editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ---------------------------------------------------------------- local
+uart.log
+*.local

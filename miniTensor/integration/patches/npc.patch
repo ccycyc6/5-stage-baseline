@@ -1,0 +1,706 @@
+diff --git a/miniTensor/README.md b/miniTensor/README.md
+index 27c0920c..36fe889d 100644
+--- a/miniTensor/README.md
++++ b/miniTensor/README.md
+@@ -91,6 +91,8 @@ Mundus/NPC 核 + RT-Thread Nano 上驱动 miniTensor 执行，21 个 stage 逐
+     # CONFIG_RVE is not set
+     CONFIG_BP_TAGE=y
+     CONFIG_BRANCH_RAS=y
++    CONFIG_BRANCH_BTB_WIDTH=8           # 256 项 BTB（默认 4=16 项）
++    CONFIG_BRANCH_LOOP_PREDICTOR=y      # 循环预测
+     CONFIG_IROM_SIZE_32KB=y
+     CONFIG_DCACHE_SIZE_8KB=y
+     CONFIG_STORE_BUFFER_DEPTH_4=y
+diff --git a/miniTensor/integration/patches/npc.patch b/miniTensor/integration/patches/npc.patch
+index 6b0053bc..e69de29b 100644
+--- a/miniTensor/integration/patches/npc.patch
++++ b/miniTensor/integration/patches/npc.patch
+@@ -1,675 +0,0 @@
+-diff --git a/miniTensor/README.md b/miniTensor/README.md
+-index 3653805d..fddaa321 100644
+---- a/miniTensor/README.md
+-+++ b/miniTensor/README.md
+-@@ -46,7 +46,8 @@ Mundus/NPC 核 + RT-Thread Nano 上驱动 miniTensor 执行，21 个 stage 逐
+-     sudo apt update
+-     sudo apt install -y build-essential flex bison libncurses-dev \
+-         python3 python3-venv python3-pip git curl ca-certificates \
+--        verilator openjdk-21-jdk gcc-riscv64-unknown-elf
+-+        verilator openjdk-21-jdk gcc-riscv64-unknown-elf \
+-+        libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+- 
+- 若发行版的 Verilator 低于 5.x，请从源码安装（https://verilator.org）。
+- 若没有 `gcc-riscv64-unknown-elf` 包，可安装 xPack/官方 RISC-V 工具链并保证
+-@@ -63,10 +64,12 @@ Mundus/NPC 核 + RT-Thread Nano 上驱动 miniTensor 执行，21 个 stage 逐
+- 
+- ### 2.3 子模块（首次）
+- 
+--    git submodule update --init nvboard rtthread-nano
+-+    git submodule update --init rtthread-nano
+- 
+--只需 `nvboard`（npc 的 Makefile 会 include 它）和 `rtthread-nano`（BSP）。
+--其余子模块（ysyxSoC / am-kernels / ...）本流程不需要；构建时若出现
+-+只需要 `rtthread-nano`（BSP）。**`nvboard` 不需要**：它只用于 `MODE=nvboard`
+-+（板级仿真 / pin 绑定），JYD 的 Verilator 流程用不到；`npc/Makefile` 里它的
+-+`include` 已经是可选的，目录不存在也能构建。
+-+其余子模块（ysyxSoC / am-kernels / ...）本流程也不需要；构建时若出现
+- `find: .../ysyxSoC/...: No such file or directory` 的警告可以忽略。
+- 
+- ### 2.4 npc 构建工具（首次）
+-diff --git a/miniTensor/integration/patches/npc.patch b/miniTensor/integration/patches/npc.patch
+-index 0defcf76..e69de29b 100644
+---- a/miniTensor/integration/patches/npc.patch
+-+++ b/miniTensor/integration/patches/npc.patch
+-@@ -1,603 +0,0 @@
+--diff --git a/.gitignore b/.gitignore
+--index 2ef5c6d0..97e65ec9 100644
+----- a/.gitignore
+--+++ b/.gitignore
+--@@ -6,6 +6,7 @@
+-- !/nanos-lite/*
+-- !/navy-apps/*
+-- !/npc/*
+--+!/miniTensor/**
+-- !*.mk
+-- !Makefile
+-- !README.md
+--diff --git a/README.md b/README.md
+--index 070e37bf..e7b15a9a 100644
+----- a/README.md
+--+++ b/README.md
+--@@ -7,3 +7,11 @@ bash init.sh subproject-name
+-- 进行初始化, 具体请参考[实验讲义][lecture note].
+-- 
+-- [lecture note]: https://ysyx.oscc.cc/docs/
+--+
+--+---
+--+
+--+## miniTensor（INT8 AI 加速器）
+--+
+--+`miniTensor/` 是本核上接入的 INT8 AI 加速器（CV-X-IF 从端 + 128-bit DMA）。
+--+它已在真实 NPC 核 + RT-Thread Nano 上逐比特跑通完整 **tiny-yolov3**，
+--+构建、运行、验收和故障排查见 [miniTensor/README.md](miniTensor/README.md)。
+--diff --git a/npc/Makefile b/npc/Makefile
+--index dd99509a..88afb06c 100644
+----- a/npc/Makefile
+--+++ b/npc/Makefile
+--@@ -148,6 +148,28 @@ SOC_PERIP_DIR    := $(SOC_HOME)/perip
+-- SOC_BUILD_DIR    := $(SOC_HOME)/build
+-- MUNDUS_SIM_C_DIR := $(NPC_HOME)/csrc
+-- 
+--+### miniTensor accelerator (see miniTensor/integration/README.md)
+--+MT_HOME ?= $(MUNDUS_HOME)/miniTensor
+--+MT_SRCS := \
+--+	$(MT_HOME)/rtl/interface/core_v_xif.sv \
+--+	$(MT_HOME)/rtl/common/minitensor_pkg.sv \
+--+	$(MT_HOME)/rtl/tensor/tensor_pkg.sv \
+--+	$(MT_HOME)/rtl/vector/vpu_pkg.sv \
+--+	$(MT_HOME)/rtl/vector/vpu_vector_regfile.sv \
+--+	$(MT_HOME)/rtl/vector/vpu_vector_alu.sv \
+--+	$(MT_HOME)/rtl/control/vpu_vector_controller.sv \
+--+	$(MT_HOME)/rtl/tensor/MXU/Systolic_Array/tensor_pe.sv \
+--+	$(MT_HOME)/rtl/tensor/MXU/Systolic_Array/tensor_systolic_array.sv \
+--+	$(MT_HOME)/rtl/tensor/MXU/INT8_GEMM/tensor_gemm_core.sv \
+--+	$(MT_HOME)/rtl/tensor/tensor_controller.sv \
+--+	$(MT_HOME)/rtl/tensor/Epilogue/tensor_epilogue_core.sv \
+--+	$(MT_HOME)/rtl/tensor/Epilogue/tensor_epilogue_controller.sv \
+--+	$(MT_HOME)/rtl/memory/unified_buffer.sv \
+--+	$(MT_HOME)/rtl/memory/vpu_dma.sv \
+--+	$(MT_HOME)/rtl/top/mini_tensor_top.sv \
+--+	$(MT_HOME)/integration/npc/mt_cvxif_shim.sv \
+--+	$(MT_HOME)/integration/npc/mt_dma_bridge.sv
+--+
+-- ### Chisel src
+-- SCALA_SRCS  = $(shell find $(abspath $(SCALA_SRCS_DIR)) -name "*.scala")
+-- SCALA_SRCS += $(shell find $(abspath $(SCALA_AUTOGEN_DIR)) -name "*.scala")
+--@@ -166,6 +188,9 @@ else ifeq ($(PLATFORM),jyd)
+-- 	TB_SRCS  += $(MUNDUS_VSRC_DIR)/testbench/MundusJyd.v
+-- 	TB_SRCS  += $(MUNDUS_VSRC_DIR)/testbench/jyd/*.sv
+-- endif
+--+ifeq ($(PLATFORM),jyd)
+--+	MT_ACTIVE_SRCS := $(MT_SRCS)
+--+endif
+-- 
+-- ### SoC RTL src
+-- SOC_SRCS   := $(shell find $(abspath $(SOC_PERIP_DIR)) -name "*.v")
+--@@ -179,6 +204,7 @@ else ifeq ($(PLATFORM),npc)
+-- 	VSRCS  += $(TB_SRCS)
+-- else ifeq ($(PLATFORM),jyd)
+-- 	VSRCS  += $(TB_SRCS)
+--+	VSRCS  += $(MT_ACTIVE_SRCS)
+-- endif
+-- 
+-- ### simulation C src
+--@@ -218,6 +244,12 @@ VERILATOR_FLAGS += $(V_INCFLAGS)
+-- ### cpp flags (for verilator)
+-- CXXFLAGS += -Wall $(CXX_INCFLAGS) $(C_DEF_MACRO)
+-- 
+--+### Verilator reset value mode: 0 = zeros, 1 = ones, 2 = random.
+--+### The JYD platform currently needs 0: with the random reset some state that the
+--+### reset does not clear settles into a value that wedges the frontend after
+--+### fetch, so no instruction ever issues.  Mode 1 also hangs; mode 0 boots.
+--+VERILATOR_RESET ?= 2
+--+
+-- ## 7. targets
+-- 
+-- ### default
+--@@ -258,7 +290,7 @@ wave: $(BUILD_DIR) $(CHISEL_BUILD_DIR) $(VSRCS) \
+-- 		$(addprefix -CFLAGS , $(CXXFLAGS)) $(WAVE_CSRCS) \
+-- 		$(addprefix -LDFLAGS , $(LDFLAGS)) \
+-- 		--Mdir $(OBJ_DIR) --exe -o $(abspath $(BIN))
+---	@$(abspath $(BIN)) +verilator+rand+reset+2 $(ARGS)
+--+	@$(abspath $(BIN)) +verilator+rand+reset+$(VERILATOR_RESET) $(ARGS)
+-- ifeq ($(MODE),wave)
+-- 	@gtkwave $(WAVEFORM) $(NPC_HOME)/signals.gtkw
+-- endif
+--diff --git a/npc/csrc/include/mem.h b/npc/csrc/include/mem.h
+--index 2e9d334c..14f32fd3 100644
+----- a/npc/csrc/include/mem.h
+--+++ b/npc/csrc/include/mem.h
+--@@ -23,7 +23,21 @@ static inline bool in_psram(word_t addr) { return in_range(addr, CONFIG_PSRAM_BA
+-- static inline bool in_sdram(word_t addr) { return in_range(addr, CONFIG_SDRAM_BASE, CONFIG_SDRAM_SIZE); }
+-- static inline bool in_npc_mem(word_t addr) { return in_range(addr, CONFIG_MEM_BASE, CONFIG_MEM_SIZE); }
+-- static inline bool in_irom(word_t addr)  { return in_range(addr, 0x80000000, CONFIG_IROM_SIZE_BYTES); }
+---static inline bool in_dram(word_t addr)  { return in_range(addr, 0x80100000,  0x40000); }
+--+
+--+/* JYD external memory (simulation model).
+--+ *
+--+ * perip_bridge decodes 0x8010_0000-0x80FF_FFFF as DRAM, so DRAM_SIZE must stay
+--+ * in step with its dram_read_hit/dram_write_hit.  Only the first 256 KiB is
+--+ * D-cacheable (scsrc/Mundus.scala:543-544); the rest is uncached but still
+--+ * CPU-addressable, which is what lets the firmware reach weights and activation
+--+ * buffers that are far larger than the on-chip 256 KiB.
+--+ *
+--+ * 0x8030_0000-0x8033_FFFF is the uncached mirror of 0x8010_0000-0x8013_FFFF
+--+ * (address bit 21 set) and is where the miniTensor scratch buffers live. */
+--+#define DRAM_BASE 0x80100000u
+--+#define DRAM_SIZE 0x00F00000u   /* 15 MiB, ending at 0x80FF_FFFF */
+--+
+--+static inline bool in_dram(word_t addr)  { return in_range(addr, DRAM_BASE, DRAM_SIZE); }
+-- 
+-- void program_ROM(FILE *bin);
+-- 
+--@@ -47,6 +61,10 @@ bool in_pmem(word_t addr);
+-- extern "C" int vaddr_read(int raddr);
+-- extern "C" void vaddr_write(int addr, word_t data, int w_len);
+-- 
+--+// miniTensor 128-bit uncached DMA (one 16-byte beat per call).
+--+extern "C" void mt_dma_read(int addr, int *w0, int *w1, int *w2, int *w3);
+--+extern "C" void mt_dma_write(int addr, int w0, int w1, int w2, int w3);
+--+
+-- int paddr_read(uintptr_t raddr);
+-- void paddr_write(uintptr_t addr, word_t data, int len);
+-- 
+--diff --git a/npc/csrc/wave/mem.cpp b/npc/csrc/wave/mem.cpp
+--index 4de093ad..10832821 100644
+----- a/npc/csrc/wave/mem.cpp
+--+++ b/npc/csrc/wave/mem.cpp
+--@@ -14,7 +14,7 @@ static uint8_t psram[CONFIG_PSRAM_SIZE];
+-- static uint8_t sdram[CONFIG_SDRAM_SIZE];
+-- static uint8_t mem[CONFIG_MEM_SIZE];
+-- static uint8_t irom[CONFIG_IROM_SIZE_BYTES];
+---static uint8_t dram[0x40000];
+--+static uint8_t dram[DRAM_SIZE];
+-- 
+-- bool in_pmem(word_t addr) {
+-- #if defined(IS_SOC)
+--@@ -41,7 +41,7 @@ uintptr_t vir_to_phy(word_t vaddr) {
+--   if (in_npc_mem(vaddr)) { return (uintptr_t)mem + vaddr - CONFIG_MEM_BASE; }
+-- #else
+--   if (in_irom(vaddr)) { return (uintptr_t)irom + vaddr - 0x80000000; }
+---  if (in_dram(vaddr)) { return (uintptr_t)dram + vaddr - 0x80100000; }
+--+  if (in_dram(vaddr)) { return (uintptr_t)dram + vaddr - DRAM_BASE; }
+-- #endif
+--   out_of_bound(vaddr);
+--   return 0; 
+--@@ -75,8 +75,11 @@ void program_ROM(FILE *bin) {
+--     if (c == -1) break;
+--     irom[i] = (uint8_t)c;
+--   }
+--+  /* The flat image spans 0x8000_0000 upwards, so 0x8010_0000 lands at file
+--+   * offset 0x100000.  Read to end-of-file: the firmware carries its own data,
+--+   * and any appended weight blob is picked up automatically. */
+--   fseek(bin, 0x100000, SEEK_SET);
+---  for (i = 0; i < 0x40000; i++) {
+--+  for (i = 0; i < (int)DRAM_SIZE; i++) {
+--     int c = fgetc(bin);
+--     if (c == -1) break;
+--     dram[i] = (uint8_t)c;
+--@@ -173,6 +176,52 @@ extern "C" void vaddr_write(int addr, word_t data, int w_len) {
+--   paddr_write(vir_to_phy(addr), data, len);
+-- }
+-- 
+--+/* The accelerator addresses its scratch through the DRAM mirror at
+--+ * 0x8030_0000, and BRAM.v only decodes 0x8013_0000-0x8013_FFFF for it.  That
+--+ * mirror is translated here, and ONLY that mirror: masking bit 21 off every
+--+ * address (which is what this used to do) also aliases 0x8040_0000 against
+--+ * 0x8060_0000, 0x80C0_0000 against 0x80E0_0000 and so on, halving the window
+--+ * the model's weight blobs and activation buffers live in.  Two buffers 2 MiB
+--+ * apart then silently share storage, and the symptom shows up as corrupted
+--+ * weights rather than as a bad address. */
+--+static uint32_t mt_dma_phys(uint32_t addr) {
+--+  if (addr >= 0x80300000u && addr < 0x80400000u) {
+--+    return 0x80100000u + (addr - 0x80300000u);
+--+  }
+--+  return addr;
+--+}
+--+
+--+/* ---------------------------------------------------------------------------
+--+ * miniTensor 128-bit uncached DMA.
+--+ *
+--+ * The accelerator addresses its scratch buffers through the DRAM mirror at
+--+ * 0x8030_0000; the physical slice it may touch is 0x8013_0000-0x8013_FFFF, so
+--+ * clear address bit 21 and index the same dram[] array the CPU reaches through
+--+ * BRAM.v's vaddr_read/vaddr_write.  Sharing one array is what makes the
+--+ * accelerator a coherent second master without any cache maintenance: the CPU
+--+ * only ever touches that slice through the uncached alias, so the D-cache never
+--+ * holds a line of it.
+--+ * ------------------------------------------------------------------------- */
+--+extern "C" void mt_dma_read(int addr, int *w0, int *w1, int *w2, int *w3) {
+--+  uint32_t a = mt_dma_phys((uint32_t)addr);
+--+  if (!in_dram(a)) { out_of_bound(a); }
+--+  const uint32_t *p = (const uint32_t *)(dram + (a - DRAM_BASE));
+--+  *w0 = (int)p[0];
+--+  *w1 = (int)p[1];
+--+  *w2 = (int)p[2];
+--+  *w3 = (int)p[3];
+--+}
+--+
+--+extern "C" void mt_dma_write(int addr, int w0, int w1, int w2, int w3) {
+--+  uint32_t a = mt_dma_phys((uint32_t)addr);
+--+  if (!in_dram(a)) { out_of_bound(a); }
+--+  uint32_t *p = (uint32_t *)(dram + (a - DRAM_BASE));
+--+  p[0] = (uint32_t)w0;
+--+  p[1] = (uint32_t)w1;
+--+  p[2] = (uint32_t)w2;
+--+  p[3] = (uint32_t)w3;
+--+}
+--+
+-- int paddr_read(uintptr_t raddr) { return host_read(raddr); }
+-- void paddr_write(uintptr_t addr, word_t data, int len) { host_write(addr, data, len); }
+-- 
+--diff --git a/npc/vsrc/testbench/IP/BRAM.v b/npc/vsrc/testbench/IP/BRAM.v
+--index eaefc7c5..aefde7d4 100644
+----- a/npc/vsrc/testbench/IP/BRAM.v
+--+++ b/npc/vsrc/testbench/IP/BRAM.v
+--@@ -1,10 +1,10 @@
+-- module BRAM(
+--     input         clka  ,
+---    input  [15:0] addra ,
+--+    input  [21:0] addra ,
+--     input  [ 3:0] wea   ,
+--     input  [31:0] dina  ,
+--     input         clkb  ,
+---    input  [15:0] addrb ,
+--+    input  [21:0] addrb ,
+--     output [31:0] doutb
+-- );
+-- 
+--@@ -20,8 +20,11 @@ import "DPI-C" function void vaddr_write(input int waddr, input int wdata, input
+--   reg  [31:0] rdata ;
+--   reg  [31:0] rdata_q;
+-- 
+---  assign raddr = { 14'b1000_0000_0001_00, addrb, 2'b00  };
+---  assign waddr = { 14'b1000_0000_0001_00, addra, offset };
+--+  // Word addresses span the whole 0x8000_0000-0x80FF_FFFF DRAM window, so the
+--+  // reconstructed byte address is 0x8000_0000 | (word << 2).  perip_bridge
+--+  // normalises the uncached mirror (0x8030_0000-0x8033_FFFF) before it gets here.
+--+  assign raddr = { 8'b1000_0000, addrb, 2'b00  };
+--+  assign waddr = { 8'b1000_0000, addra, offset };
+--   assign wen   = wea != 4'b0000;
+--   // Match the FPGA Block Memory Generator with its core output register
+--   // enabled: one cycle for the memory array and one cycle for doutb.
+--diff --git a/npc/vsrc/testbench/jyd/bram_driver.sv b/npc/vsrc/testbench/jyd/bram_driver.sv
+--index 22e1874d..c0ed4139 100644
+----- a/npc/vsrc/testbench/jyd/bram_driver.sv
+--+++ b/npc/vsrc/testbench/jyd/bram_driver.sv
+--@@ -22,9 +22,9 @@
+-- 
+-- module bram_driver(
+--     input  logic         clk,
+---    input  logic [17:0]  read_addr,
+--+    input  logic [23:0]  read_addr,
+--     input  logic         write_valid,
+---    input  logic [17:0]  write_addr,
+--+    input  logic [23:0]  write_addr,
+--     input  logic [31:0]  write_data,
+--     input  logic [3:0]   write_wea,
+--     output logic [31:0]  perip_rdata
+--@@ -33,11 +33,24 @@ module bram_driver(
+-- 
+--     BRAM Mem_BRAM (
+--         .clka       (clk),
+--+`ifdef __VERILATOR__
+--+        // The simulation model spans the full 0x8000_0000-0x80FF_FFFF window so
+--+        // the firmware can keep weights and activations far beyond the on-chip
+--+        // 256 KiB.
+--+        .addra      (write_addr[23:2]),
+--+        .wea        (write_valid ? write_wea : 4'b0000),
+--+        .dina       (write_data),
+--+        .clkb       (clk),
+--+        .addrb      (read_addr[23:2]),
+--+`else
+--+        // The Vivado Block Memory Generator IP is only 65536 x 32, so the
+--+        // hardware build keeps the original 256 KiB address width.
+--         .addra      (write_addr[17:2]),
+--         .wea        (write_valid ? write_wea : 4'b0000),
+--         .dina       (write_data),
+--         .clkb       (clk),
+--         .addrb      (read_addr[17:2]),
+--+`endif
+--         .doutb      (bram_rdata_raw)
+--     );
+-- 
+--diff --git a/npc/vsrc/testbench/jyd/perip_bridge.sv b/npc/vsrc/testbench/jyd/perip_bridge.sv
+--index 2a8336e3..8a96b2be 100644
+----- a/npc/vsrc/testbench/jyd/perip_bridge.sv
+--+++ b/npc/vsrc/testbench/jyd/perip_bridge.sv
+--@@ -43,7 +43,16 @@ module perip_bridge(
+--     output logic         uart_tx_start,
+-- 
+--     output logic [39:0]  virtual_seg_output,
+---    output logic [31:0]  virtual_led_output
+--+    output logic [31:0]  virtual_led_output,
+--+
+--+    // miniTensor MMIO extension.  The CV-X-IF adapter lives in student_top so
+--+    // this bridge stays independent of the accelerator.
+--+    output logic         mt_wr_en,
+--+    output logic [2:0]   mt_wr_idx,
+--+    output logic [31:0]  mt_wr_data,
+--+    output logic         mt_status_rd,
+--+    input  logic [31:0]  mt_status,
+--+    input  logic [31:0]  mt_result
+-- );
+--     localparam logic [31:0] DRAM_ADDR_START = 32'h8010_0000;
+--     localparam logic [31:0] DRAM_ADDR_END   = 32'h8013_FFFF;
+--@@ -58,6 +67,11 @@ module perip_bridge(
+--     localparam logic [31:0] CONSOLE_RX      = 32'h8020_0068;
+--     localparam logic [31:0] CNT_START_CMD   = 32'h8000_0000;
+--     localparam logic [31:0] CNT_STOP_CMD    = 32'hFFFF_FFFF;
+--+    // miniTensor control window: 0x8020_1000-0x8020_101F, an unused part of the
+--+    // peripheral page.  The register index is perip_addr[4:2].
+--+    localparam logic [31:0] MT_STATUS_ADDR  = 32'h8020_1010;
+--+    localparam logic [31:0] MT_RESULT_ADDR  = 32'h8020_1014;
+--+    localparam logic [2:0]  MT_IDX_STATUS   = 3'd4;
+-- 
+--     // Read-response source tag. Address decoding is completed when the
+--     // request enters the bridge; only this compact tag follows the two-cycle
+--@@ -124,7 +138,7 @@ module perip_bridge(
+--     logic       uart_rx_ready_d;
+-- `endif
+-- 
+---    logic [17:0] store_addr_q  [0:STORE_QUEUE_DEPTH-1];
+--+    logic [23:0] store_addr_q  [0:STORE_QUEUE_DEPTH-1];
+--     logic [31:0] store_wdata_q [0:STORE_QUEUE_DEPTH-1];
+--     logic [1:0]  store_mask_q  [0:STORE_QUEUE_DEPTH-1];
+--     logic [STORE_QUEUE_PTR_WIDTH-1:0] store_head_q;
+--@@ -139,8 +153,13 @@ module perip_bridge(
+--     logic        dram_load_request;
+--     logic        dram_load_accept;
+--     logic        mmio_write_accept;
+--+    logic        dram_lo_hit;
+--+    logic        dram_hi_hit;
+--+    logic        alias_hit;
+--+    logic [31:0] dram_phys_addr;
+--+    logic        mt_hit;
+--     logic        bram_write_valid_q;
+---    logic [17:0] bram_cmd_addr_q;
+--+    logic [23:0] bram_cmd_addr_q;
+--     logic [31:0] bram_cmd_wdata_q;
+--     logic [3:0]  bram_cmd_wea_q;
+--     logic [STORE_QUEUE_PTR_WIDTH-1:0] store_scan_index;
+--@@ -150,11 +169,41 @@ module perip_bridge(
+--     logic [31:0] load_forward_data_next;
+--     logic [3:0]  staged_forward_mask;
+-- 
+---    assign dram_read_hit  = perip_addr[31:18] == 14'b1000_0000_0001_00;
+---    assign dram_write_hit = perip_addr[31:18] == 14'b1000_0000_0001_00;
+--+    // Cacheable DRAM occupies 0x8010_0000-0x8013_FFFF.  The same physical bytes
+--+    // are also reachable at 0x8030_0000-0x8033_FFFF (address bit 21 set).  That
+--+    // mirror lies outside the D-cache's hard-wired cacheable window
+--+    // (scsrc/Mundus.scala:543-544), so CPU traffic through it is uncached --
+--+    // exactly what the miniTensor DMA buffers need, since Mundus has no cache
+--+    // flush/invalidate instruction.  bram_driver only forwards perip_addr[17:0]
+--+    // and BRAM.v rebuilds the 0x8010_0000 base from that offset, so both windows
+--+    // already land on the same bytes without further changes.
+--+    // The whole 0x8010_0000-0x80FF_FFFF range is external memory, so the
+--+    // firmware can hold weights and activation buffers far larger than the
+--+    // 256 KiB that used to be decoded here.  Only the low 256 KiB is
+--+    // D-cacheable; the rest is uncached but still CPU-addressable.
+--+    // The decode deliberately leaves holes so nothing else in the map is
+--+    // swallowed:
+--+    //   0x8014_0000-0x803F_FFFF  unused
+--+    //   0x8020_0000-0x8020_00FF  peripherals (MMIO)
+--+    //   0x8030_0000-0x8033_FFFF  the uncached mirror below
+--+    // The extended window 0x8040_0000-0x80FF_FFFF adds 12 MiB of uncached
+--+    // memory for weights and activation buffers, far beyond the on-chip
+--+    // 256 KiB.  Only 0x8010_0000-0x8013_FFFF is D-cacheable.
+--+    assign dram_lo_hit = (perip_addr[31:18] == 14'b1000_0000_0001_00);
+--+    assign alias_hit   = (perip_addr[31:18] == 14'b1000_0000_0011_00);
+--+    assign dram_hi_hit = (perip_addr[31:26] == 6'b1000_00) &&
+--+                         (perip_addr[25:22] != 4'd0);
+--+    assign dram_read_hit  = dram_lo_hit || alias_hit || dram_hi_hit;
+--+    assign dram_write_hit = dram_read_hit;
+--+
+--+    // 0x8030_0000-0x8033_FFFF is the uncached mirror of the low 256 KiB (bit 21
+--+    // set).  Clear that bit so both windows land on the same physical bytes.
+--+    assign dram_phys_addr = alias_hit
+--+                          ? {perip_addr[31:22], 1'b0, perip_addr[20:0]}
+--+                          : perip_addr;
+-- 
+--     function automatic logic [3:0] store_byte_enable(
+---        input logic [17:0] addr,
+--+        input logic [23:0] addr,
+--         input logic [1:0]  mask
+--     );
+--         unique case (mask)
+--@@ -217,6 +266,18 @@ module perip_bridge(
+--     assign mmio_write_accept = perip_valid && perip_ready && perip_wen &&
+--                                (~dram_write_hit);
+-- 
+--+    // miniTensor control window.  Routing it through the ordinary MMIO path
+--+    // gives it the same strong ordering against queued DRAM stores that every
+--+    // other peripheral gets, so a buffer store can never be overtaken by the
+--+    // KICK that tells the accelerator to read it.
+--+    assign mt_hit       = (perip_addr[31:8] == 24'h80_20_10) &&
+--+                          (perip_addr[7:5] == 3'b000);
+--+    assign mt_wr_en     = mmio_write_accept && mt_hit;
+--+    assign mt_wr_idx    = perip_addr[4:2];
+--+    assign mt_wr_data   = perip_wdata;
+--+    assign mt_status_rd = read_accept && mt_hit &&
+--+                          (perip_addr[4:2] == MT_IDX_STATUS);
+--+
+-- `ifdef __VERILATOR__
+--     import "DPI-C" function int sim_console_getchar();
+--     import "DPI-C" function void sim_led_write(input int value);
+--@@ -343,7 +404,7 @@ module perip_bridge(
+-- `endif
+--     assign staged_forward_mask =
+--         dram_load_request && bram_write_valid_q &&
+---        (bram_cmd_addr_q[17:2] == perip_addr[17:2])
+--+        (bram_cmd_addr_q[23:2] == dram_phys_addr[23:2])
+--             ? bram_cmd_wea_q
+--             : 4'd0;
+-- 
+--@@ -360,7 +421,7 @@ module perip_bridge(
+-- 
+--         if (dram_load_request) begin
+--             if (bram_write_valid_q &&
+---                (bram_cmd_addr_q[17:2] == perip_addr[17:2])) begin
+--+                (bram_cmd_addr_q[23:2] == dram_phys_addr[23:2])) begin
+--                 load_forward_mask_next = bram_cmd_wea_q;
+--                 load_forward_data_next = bram_cmd_wdata_q;
+--             end
+--@@ -369,8 +430,8 @@ module perip_bridge(
+--                 store_scan_index =
+--                     store_head_q + STORE_QUEUE_PTR_WIDTH'(entry);
+--                 if ((STORE_QUEUE_COUNT_WIDTH'(entry) < store_count_q) &&
+---                    (store_addr_q[store_scan_index][17:2] ==
+---                     perip_addr[17:2])) begin
+--+                    (store_addr_q[store_scan_index][23:2] ==
+--+                     dram_phys_addr[23:2])) begin
+--                     store_scan_byte_en = store_byte_enable(
+--                         store_addr_q[store_scan_index],
+--                         store_mask_q[store_scan_index]);
+--@@ -423,7 +484,7 @@ module perip_bridge(
+--             store_count_q <= '0;
+--         end else begin
+--             if (store_enqueue) begin
+---                store_addr_q[store_tail_q]  <= perip_addr[17:0];
+--+                store_addr_q[store_tail_q]  <= dram_phys_addr[23:0];
+--                 store_wdata_q[store_tail_q] <= perip_wdata;
+--                 store_mask_q[store_tail_q]  <= perip_mask;
+--                 if (STORE_QUEUE_DEPTH > 1) begin
+--@@ -452,7 +513,7 @@ module perip_bridge(
+--     always_ff @(posedge clk) begin
+--         if (rst) begin
+--             bram_write_valid_q <= 1'b0;
+---            bram_cmd_addr_q  <= 18'd0;
+--+            bram_cmd_addr_q  <= 24'd0;
+--             bram_cmd_wdata_q <= 32'd0;
+--             bram_cmd_wea_q   <= 4'd0;
+--         end else begin
+--@@ -590,6 +651,14 @@ module perip_bridge(
+--                         response_tag_next = RESP_MMIO;
+--                         mmio_rdata_next   = {24'd0, console_rx_data};
+--                     end
+--+                    MT_STATUS_ADDR: begin
+--+                        response_tag_next = RESP_MMIO;
+--+                        mmio_rdata_next   = mt_status;
+--+                    end
+--+                    MT_RESULT_ADDR: begin
+--+                        response_tag_next = RESP_MMIO;
+--+                        mmio_rdata_next   = mt_result;
+--+                    end
+--                     default: begin
+--                     end
+--                 endcase
+--@@ -681,7 +750,7 @@ module perip_bridge(
+--     // -------------------------------------------------------------------------
+--     bram_driver bram_driver_inst (
+--         .clk         (clk),
+---        .read_addr   (perip_addr[17:0]),
+--+        .read_addr   (dram_phys_addr[23:0]),
+--         .write_valid (bram_write_valid_q),
+--         .write_addr  (bram_cmd_addr_q),
+--         .write_data  (bram_cmd_wdata_q),
+--diff --git a/npc/vsrc/testbench/jyd/student_top.sv b/npc/vsrc/testbench/jyd/student_top.sv
+--index 0fc5ca26..35906cdd 100644
+----- a/npc/vsrc/testbench/jyd/student_top.sv
+--+++ b/npc/vsrc/testbench/jyd/student_top.sv
+--@@ -33,6 +33,25 @@ module student_top#(
+--     logic [1:0] perip_mask;
+--     logic timer_irq;
+-- 
+--+    // miniTensor accelerator control + 128-bit uncached DMA
+--+    core_v_xif mt_xif ();
+--+
+--+    logic        mt_wr_en;
+--+    logic [2:0]  mt_wr_idx;
+--+    logic [31:0] mt_wr_data;
+--+    logic        mt_status_rd;
+--+    logic [31:0] mt_status;
+--+    logic [31:0] mt_result;
+--+
+--+    logic         mt_mem_rd_valid, mt_mem_rd_ready;
+--+    logic         mt_mem_rsp_valid, mt_mem_rsp_ready;
+--+    logic [31:0]  mt_mem_rd_addr;
+--+    logic [127:0] mt_mem_rsp_data;
+--+    logic         mt_mem_wr_valid, mt_mem_wr_ready;
+--+    logic [31:0]  mt_mem_wr_addr;
+--+    logic [127:0] mt_mem_wr_data;
+--+    logic [15:0]  mt_mem_wr_be;
+--+
+--     // The ROM stores two RV32 instructions in each 64-bit entry.
+--     assign inst_addr = pc[`CONFIG_IROM_ADDR_WIDTH + 2:3];
+-- 
+--@@ -95,7 +114,73 @@ module student_top#(
+--         .uart_tx_data      (uart_tx_data),
+--         .uart_tx_start     (uart_tx_start),
+--         .virtual_seg_output	(virtual_seg),
+---        .virtual_led_output (virtual_led)
+--+        .virtual_led_output (virtual_led),
+--+
+--+        .mt_wr_en           (mt_wr_en),
+--+        .mt_wr_idx          (mt_wr_idx),
+--+        .mt_wr_data         (mt_wr_data),
+--+        .mt_status_rd       (mt_status_rd),
+--+        .mt_status          (mt_status),
+--+        .mt_result          (mt_result)
+--+    );
+--+
+--+    // ---------------------------------------------------------------------
+--+    // miniTensor: MMIO -> CV-X-IF adapter, the accelerator itself, and the
+--+    // 128-bit DMA bridge into the DPI memory model.
+--+    // ---------------------------------------------------------------------
+--+    mt_cvxif_shim u_mt_shim (
+--+        .clk         (w_cpu_clk),
+--+        .rst         (w_clk_rst),
+--+        .reg_wr_en   (mt_wr_en),
+--+        .reg_wr_idx  (mt_wr_idx),
+--+        .reg_wr_data (mt_wr_data),
+--+        .status_rd   (mt_status_rd),
+--+        .status      (mt_status),
+--+        .result_data (mt_result),
+--+        .xif         (mt_xif)
+--+    );
+--+
+--+    mini_tensor_top #(
+--+        .X_ID_WIDTH(4),
+--+        .X_HARTID_WIDTH(1),
+--+        .DATA_WIDTH(128),
+--+        .UB_DEPTH(256)
+--+    ) u_mini_tensor (
+--+        .clk           (w_cpu_clk),
+--+        .rst           (w_clk_rst),
+--+        .xif           (mt_xif),
+--+        .mem_rd_valid  (mt_mem_rd_valid),
+--+        .mem_rd_ready  (mt_mem_rd_ready),
+--+        .mem_rd_addr   (mt_mem_rd_addr),
+--+        .mem_rsp_valid (mt_mem_rsp_valid),
+--+        .mem_rsp_ready (mt_mem_rsp_ready),
+--+        .mem_rsp_data  (mt_mem_rsp_data),
+--+        .mem_wr_valid  (mt_mem_wr_valid),
+--+        .mem_wr_ready  (mt_mem_wr_ready),
+--+        .mem_wr_addr   (mt_mem_wr_addr),
+--+        .mem_wr_data   (mt_mem_wr_data),
+--+        .mem_wr_be     (mt_mem_wr_be),
+--+        .ub_rd_en      (1'b0),
+--+        .ub_rd_addr    (8'd0),
+--+        .ub_rd_valid   (),
+--+        .ub_rd_data    (),
+--+        .dma_busy      ()
+--+    );
+--+
+--+    mt_dma_bridge u_mt_dma (
+--+        .clk           (w_cpu_clk),
+--+        .rst           (w_clk_rst),
+--+        .mem_rd_valid  (mt_mem_rd_valid),
+--+        .mem_rd_ready  (mt_mem_rd_ready),
+--+        .mem_rd_addr   (mt_mem_rd_addr),
+--+        .mem_rsp_valid (mt_mem_rsp_valid),
+--+        .mem_rsp_ready (mt_mem_rsp_ready),
+--+        .mem_rsp_data  (mt_mem_rsp_data),
+--+        .mem_wr_valid  (mt_mem_wr_valid),
+--+        .mem_wr_ready  (mt_mem_wr_ready),
+--+        .mem_wr_addr   (mt_mem_wr_addr),
+--+        .mem_wr_data   (mt_mem_wr_data),
+--+        .mem_wr_be     (mt_mem_wr_be)
+--     );
+-- 
+-- endmodule
+--diff --git a/rtthread-nano b/rtthread-nano
+----- a/rtthread-nano
+--+++ b/rtthread-nano
+--@@ -1 +1 @@
+---Subproject commit 0d3b2b2b7b6e95fa1f054b2a0244496b1af4e158
+--+Subproject commit 0d3b2b2b7b6e95fa1f054b2a0244496b1af4e158-dirty
+-diff --git a/npc/Makefile b/npc/Makefile
+-index 88afb06c..b620faad 100644
+---- a/npc/Makefile
+-+++ b/npc/Makefile
+-@@ -244,6 +244,13 @@ VERILATOR_FLAGS += $(V_INCFLAGS)
+- ### cpp flags (for verilator)
+- CXXFLAGS += -Wall $(CXX_INCFLAGS) $(C_DEF_MACRO)
+- 
+-+# The wave simulator's VGA device (csrc/wave/device/vga.c) uses SDL.  Those
+-+# flags used to arrive via nvboard's scripts/nvboard.mk, which made an
+-+# un-initialised nvboard a hidden build dependency.  Request them directly so
+-+# the Verilator platforms build with or without nvboard.
+-+CXXFLAGS += $(shell sdl2-config --cflags 2>/dev/null)
+-+LDFLAGS  += $(shell sdl2-config --libs 2>/dev/null) -lSDL2_image -lSDL2_ttf
+-+
+- ### Verilator reset value mode: 0 = zeros, 1 = ones, 2 = random.
+- ### The JYD platform currently needs 0: with the random reset some state that the
+- ### reset does not clear settles into a value that wedges the frontend after
+-@@ -272,7 +279,12 @@ $(CHISEL_GEN_SRCS): $(SCALA_SRCS)
+- $(LIBCAPSTONE):
+- 	$(MAKE) -C tools/capstone
+- 
+-+# nvboard is only used by MODE=nvboard (physical-board pin binding and the
+-+# verilator-nvboard glue).  The JYD/Verilator flow does not need it, so the
+-+# include is conditional: an absent or un-initialised nvboard is not an error.
+-+ifneq ($(wildcard $(NVBOARD_HOME)/scripts/nvboard.mk),)
+- include $(NVBOARD_HOME)/scripts/nvboard.mk
+-+endif
+- 
+- ### main simulation for platform.mk
+- $(CHISEL_BUILD_DIR):
+-diff --git a/nvboard b/nvboard
+---- a/nvboard
+-+++ b/nvboard
+-@@ -1 +1 @@
+--Subproject commit c691eb23a4edd0a3898f2e1ab9afacb5c3a36ce2
+-+Subproject commit c691eb23a4edd0a3898f2e1ab9afacb5c3a36ce2-dirty
+diff --git a/npc/Makefile b/npc/Makefile
+index b620faad..413f3160 100644
+--- a/npc/Makefile
++++ b/npc/Makefile
+@@ -39,7 +39,7 @@ VENV_TOUCH := $(VENV_DIR)/.installed # Sentinel file
+ ### varilator ignore warning and error
+ VERILATOR_ERROR  = -Werror-WIDTHTRUNC
+ VERILATOR_IGNORE = -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+-                   -Wno-PINCONNECTEMPTY -Wno-UNDRIVEN
++                   -Wno-PINCONNECTEMPTY -Wno-UNDRIVEN -Wno-MULTIDRIVEN
+ 
+ ### output
+ BUILD_DIR        = ./build

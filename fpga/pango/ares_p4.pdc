@@ -1,0 +1,36 @@
+# Pango PDC template for the Pangu 200Pro+ (PG2L200H-6IFBG676).
+# The board pin numbers below are placeholders: copy them from the board
+# schematic / Pango example project before running place and route.
+#
+# Syntax: set_pin_assignment { <port> } { LOCATION = <pin>; IOSTANDARD = ...; }
+
+set_pin_assignment { clk } { LOCATION = A1; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { rst } { LOCATION = A2; IOSTANDARD = LVCMOS33; }
+
+set_pin_assignment { uart_rx } { LOCATION = B1; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { uart_tx } { LOCATION = B2; IOSTANDARD = LVCMOS33; }
+
+set_pin_assignment { gpio_in[0] } { LOCATION = C1; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { gpio_in[1] } { LOCATION = C2; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { gpio_out[0] } { LOCATION = C3; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { gpio_out[1] } { LOCATION = C4; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { gpio_dir[0] } { LOCATION = C5; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { gpio_dir[1] } { LOCATION = C6; IOSTANDARD = LVCMOS33; }
+
+# SPI / QSPI flash
+set_pin_assignment { spi_sck } { LOCATION = D1; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { spi_mosi } { LOCATION = D2; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { spi_miso } { LOCATION = D3; IOSTANDARD = LVCMOS33; }
+set_pin_assignment { spi_cs_n } { LOCATION = D4; IOSTANDARD = LVCMOS33; }
+
+# HDMI TMDS outputs: route through the board HDMI TX connector/level shifter.
+# The 10-bit symbols are intended for OSERDES; the exact pins depend on the
+# board HDMI bank.  Add the three differential pairs here.
+# set_pin_assignment { tmds_clk_p } { LOCATION = ...; IOSTANDARD = TMDS_33; }
+# set_pin_assignment { tmds_d0_p  } { LOCATION = ...; IOSTANDARD = TMDS_33; }
+# set_pin_assignment { tmds_d1_p  } { LOCATION = ...; IOSTANDARD = TMDS_33; }
+# set_pin_assignment { tmds_d2_p  } { LOCATION = ...; IOSTANDARD = TMDS_33; }
+
+# DDR3 pins are owned by the Pango DDR3 IP generated for the board; do not
+# assign them by hand.  Instantiate the IP in rtl/soc/ddr/pango_ddr3_axi.sv and
+# let the IP generator produce the pin constraints.
