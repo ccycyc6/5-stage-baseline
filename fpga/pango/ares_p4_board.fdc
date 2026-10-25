@@ -1,6 +1,7 @@
 # ---------------------------------------------------------------------------
 # Pango FDC constraints for the Pangu 200Pro+ (PG2L200H-6IFBB676 / MES2L676).
-# Pin locations come from the MES2L676 board demos (see board_pinmap.md).
+# Pin locations come from the MES2L676 board demo constraints; the full ball
+# table is in git history (commit 9086853, fpga/pango/board_pinmap.md).
 # A Pango .fdc carries both timing (create_clock) and IO (define_attribute)
 # in one file; PDS rejects .sdc together with .fdc.
 # ---------------------------------------------------------------------------

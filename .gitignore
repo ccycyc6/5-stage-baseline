@@ -44,6 +44,10 @@ miniTensor/**/__pycache__/
 *.pdsbak
 *.log
 pango_run/
+
+# 位流随仓库分发（各约 9 MB），其余构建产物仍然忽略
+!bitstream/
+!bitstream/*.sbit
 impl/
 syn/
 place/

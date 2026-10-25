@@ -8,7 +8,7 @@
 #        D:\PDS_2022.2-SP6.4\bin\cdt_cfg.exe -file fpga/pango/program.tcl -args {<sbit>}
 #
 # %s is replaced by the value passed through -args, so the .sbit path can be
-# given on the command line (see docs/board_bringup.md).
+# given on the command line (see docs/board_guide.md).
 # ---------------------------------------------------------------------------
 cfg_connect -ip 127.0.0.1 -port 65420
 cfg_scan_chain

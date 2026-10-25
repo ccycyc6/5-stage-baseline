@@ -3,7 +3,7 @@
 // ARES-P4 board top for the Pangu 200Pro+ (PG2L200H-6IFBB676, MES2L676 core
 // board + MES2L676-BASE-V1.2 baseboard).
 //
-// Pin map (see fpga/pango/board_pinmap.md):
+// Pin map (full ball table in git history, commit 9086853):
 //   clk     D18   27 MHz oscillator (U11 on the MES2L676 core board)
 //   rst_n   C22   reset push button (active low)
 //   uart_tx C24   USB-UART bridge RX

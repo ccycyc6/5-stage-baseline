@@ -19,41 +19,22 @@ ARES-P4 is a complete FPGA-oriented SoC:
 - Software: bare-metal runtime, CoreMark v1.0 port, SMP/mailbox test,
   miniTensor DMA/GEMM regression, YOLO detector.
 
-See docs/implementation_plan.md, docs/verification_report.md and docs/register_map.md.
+## 上板（盘古 200Pro+ / PG2L200H-6IFBB676）
 
-## Board flow (Pangu 200Pro+, real silicon)
+- 上板指南（硬件、烧写、串口、图像识别、排错）：**[docs/board_guide.md](docs/board_guide.md)**
+- 可直接烧写的位流：**[bitstream/ares_p4_vision.sbit](bitstream/ares_p4_vision.sbit)**（图像识别 demo）
+  与 **[bitstream/ares_p4_coremark.sbit](bitstream/ares_p4_coremark.sbit)**（CoreMark），
+  说明见 [bitstream/README.md](bitstream/README.md)
+- 一键重建：`powershell -File tools\build_board.ps1 -Target vision`
+  （固件 → 128-bit 镜像 → ADS 兼容 RTL → compile/synthesize -ads/dev_map/pnr/gen_bit_stream，约 1 小时）
 
-The FPGA build does not use the Verilator tree directly: Pango ADS only supports a
-SystemVerilog subset, so `tools/pango_prep.py` mirrors `rtl/` into `build/pango/syn/rtl`.
-Everything is driven by one command:
+Pango ADS 只支持 SystemVerilog 子集（无 interface/enum/隐式端口），
+`tools/pango_prep.py` 负责把 `rtl/` 机械改写成 `build/pango/syn/rtl` 后再综合；
+仿真仍使用原始 `rtl/`。
 
-    powershell -ExecutionPolicy Bypass -File tools\build_board.ps1
-
-It builds the firmware (rv32im, 27 MHz, UART 115200), copies the `$readmemh` image
-into `fpga/pango/syn/fw.hex`, regenerates the ADS-compatible RTL, then runs
-compile → synthesize → dev_map → pnr → gen_bit_stream, leaving
-`fpga/pango/syn/generate_bitstream/ares_p4.sbit`.
-
-Download with `cdt_js.exe -port 65420` then
-`cdt_cfg.exe -file fpga/pango/program.tcl -args {<sbit>}`.
-
-On-board image recognition bitstream is built (2026-10-26): the `vision` firmware
-(32x32 frame -> 16x16 features -> 5 shape classes, result over UART) is baked into
-`ares_p4_board.sbit`; the CoreMark image is kept as `coremark_ares_p4_board.sbit`.
-Build the
-`vision` firmware target, download the bitstream and use `tools/img2raw.py` +
-`tools/send_image.ps1`. Step-by-step guide: `docs/board_guide_vision.md`.
-
-Board facts, pin map, bring-up steps and the remaining DDR3/HDMI/miniTensor work:
-see `docs/board_bringup.md`, `docs/contest_checklist.md` and
-`fpga/pango/board_pinmap.md`.
-
-Verified on 2026-10-18 (PDS 2022.2-SP6.4, PG2L200H-6IFBB676):
-compile / synthesize / dev_map / pnr / gen_bit_stream all pass and produce
-`build/pango/syn/generate_bitstream/ares_p4_board.sbit` (9,188,552 B).
-27 MHz timing: setup WNS +10.971 ns, hold WNS +0.068 ns, estimated Fmax
-38.36 MHz; one open item is a fast-corner hold of -0.073 ns on 60 endpoints.
-Resources: CLMA 45 %, LUT 25 %, FF 12 %, DRM 53 %, APM 8 %.
+实测（PG2L200H-6IFBB676，27 MHz）：setup WNS **+10.971 ns**（Fmax 38.4 MHz）、
+hold slow +0.068 ns、fast 角 −0.073 ns / 60 端点；CLMA 45%、LUT 25%、FF 12%、
+DRM 219.5/415（53%）、APM 8%；位流 9,188,552 B。
 
 ## Quick start
 
@@ -100,7 +81,7 @@ UART output is captured in build/uart.log.
 
 The YOLO detector executes the full 3-conv + head graph and decodes the head
 map, but the current packed golden comparison shows a stage-1 tiling/spatial
-mismatch. See docs/yolo_status.md for the bisection data and next fix.
+mismatch (documented in the 2026-10-18 commits; the YOLO path is not part of the board build).
 
 ## Memory map
 
@@ -110,7 +91,7 @@ mismatch. See docs/yolo_status.md for the bisection data and next fix.
 | 0x0001_0000 | 64 KiB | CLINT |
 | 0x0002_0000 | 64 KiB | PLIC |
 | 0x0003_0000 | 64 KiB | Mailbox / Barrier |
-| 0x1000_0000 | 192 KiB | L2 scratchpad / per-core scratch |
+| 0x1000_0000 | 192 KiB | L2 scratchpad / per-core scratch (板级 64 KiB) |
 | 0x4000_0000 | 1 GiB | DDR3 uncached alias |
 | 0x8000_0000 | 1 GiB | DDR3 cached |
 | 0xC000_0000 | 64 KiB | QSPI simulation window |
@@ -124,32 +105,42 @@ mismatch. See docs/yolo_status.md for the bisection data and next fix.
     rtl/core/          ARES-L 5-stage core, CSR, BPU, mul/div, regfile
     rtl/cache/         2-way L1I/L1D
     rtl/soc/           L2, CLINT/PLIC/mailbox/UART/GPIO/SPI/MMIO bus
-    rtl/soc/mt/        CV-X-IF shim, DMA bridge, per-core miniTensor wrapper
-    rtl/soc/video/     timing, OSD, TMDS
-    rtl/soc/ddr/       behavioral DDR3 model
+    rtl/soc/mt/        CV-X-IF shim, DMA bridge, miniTensor wrapper + board stub
+    rtl/soc/video/     timing, OSD, TMDS + board stub
+    rtl/soc/ddr/       behavioural DDR3 model, Pango DDR3 front end, on-chip memory
+    rtl/board/         board top for the Pangu 200Pro+ (pins, reset, LEDs)
     rtl/minitensor/    imported workspace miniTensor RTL
     firmware/common/   startup, linker, runtime, board header
     firmware/coremark/ CoreMark port
+    firmware/vision/   CPU-only 32x32 shape recognition demo (board default)
     firmware/yolo/     miniTensor driver, conv engine, packed detector
     firmware/tests/    ISA, scratchpad, SMP, miniTensor tests
     sim/               Verilator testbenches
-    fpga/pango/        PDS project scripts and constraints
-    docs/              plan, verification, YOLO status
+    fpga/pango/        board constraints (.fdc), PDS flow, programmer script, DDR3 IP
+    bitstream/         prebuilt .sbit images + description
+    tools/             build/prep/image-conversion scripts
+    docs/              board_guide.md (the single up-to-date document)
 
 ## FPGA flow
 
-The simulation-only ddr3_model is replaced by the Pango DDR3 IP on the board.
-See fpga/pango/README.md for the PDS TCL/PDC/SDC templates and the IP
-checklist. The RTL is plain SystemVerilog with one CV-X-IF interface internal
-to each mt_cluster; the top-level ports are flat.
+The board build replaces the behavioural `ddr3_model` with `onchip_ddr`
+(128 KiB BRAM pre-loaded with the firmware image) and uses ADS-compatible
+stubs for the video subsystem and the miniTensor cluster, because Pango ADS
+cannot parse SV interfaces or elaborate those two blocks. The DDR3 IP under
+`fpga/pango/ip/ddr3/` is regenerated for this device and validated through
+compile/synthesize/dev_map/pnr, but the 128-bit to 256-bit AXI bridge is still
+to be written. Details and the remaining steps: [docs/board_guide.md](docs/board_guide.md).
 
 ## Known limitations
 
 - No A extension (AMO/LR/SC); inter-core synchronization uses mailbox/barrier.
-- L2 is blocking (single outstanding) in this revision; the arbiter gives
-  miniTensor DMA priority to avoid polling starvation.
-- Video capture/scaler is register-reserved; the test-pattern/OSD/HDMI path is
-  implemented and verified.
-- Pango PDS synthesis/place-and-route has not been run in this environment; the
-  TCL/PDC/SDC files are templates to be completed with the board pins.
-- The YOLO detector golden mismatch is documented and actively bisected.
+- L2 is blocking (single outstanding) in this revision.
+- Board build uses smaller memories than the simulator (L1 4 KiB, L2 64 KiB,
+  scratchpad 64 KiB, on-chip 128 KiB) to fit the DRAM budget ADS infers;
+  the simulator keeps the full sizes.
+- Video capture/scaler is register-reserved on the board; the OSD/TMDS path is
+  verified in simulation only.
+- Fast-corner hold misses by 0.073 ns on 60 endpoints (27 MHz has 11 ns setup
+  margin, so this is cosmetic for now).
+- The YOLO detector golden mismatch (2026-10-18 commits) is not fixed; the YOLO
+  path is not part of the board build.
