@@ -49,6 +49,13 @@ syn/
 place/
 route/
 
+# ---------------------------------------------------------------- PDS scratch
+compile/
+logbackup/
+_probe/
+_smoke/
+_trial_synth/
+
 # ---------------------------------------------------------------- editors / OS
 .vscode/
 .idea/

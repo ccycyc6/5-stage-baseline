@@ -13,5 +13,5 @@ SECTIONS
   __bss_end = .;
   . = ALIGN(16);
   PROVIDE(__global_pointer$ = . + 0x800);
-  PROVIDE(__stack_top = 0x80100000);
+  PROVIDE(__stack_top = 0x80020000);
 }

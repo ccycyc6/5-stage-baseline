@@ -48,12 +48,13 @@ module ares_l2 #(
   import ares_pkg::*;
 
   localparam int unsigned INDEX_BITS = $clog2(CACHE_SETS);
+  localparam int unsigned TAG_BITS   = 32 - (INDEX_BITS + 5);
 
   // ------------------------------------------------------------------ arrays
-  logic [16:0]  tag_q [0:3][0:CACHE_SETS-1];
+  logic [TAG_BITS-1:0] tag_q [0:3][0:CACHE_SETS-1];
   logic         valid_q [0:3][0:CACHE_SETS-1];
   logic         dirty_q [0:3][0:CACHE_SETS-1];
-  logic [255:0] data_q  [0:3][0:CACHE_SETS-1];
+  (* PAP_RAM_STYLE = "BLOCK" *) logic [255:0] data_q [0:3][0:CACHE_SETS-1];
   logic [1:0]   lru_q   [0:CACHE_SETS-1];
 
   logic [127:0] sp_mem [0:SCRATCH_WORDS-1];
@@ -116,7 +117,7 @@ module ares_l2 #(
   logic [1:0]   hit_way;
   logic         cache_hit;
   logic [255:0] rd_line_q [0:3];
-  logic [16:0]  rd_tag_q [0:3];
+  logic [TAG_BITS-1:0] rd_tag_q [0:3];
   logic         rd_valid_q [0:3];
   logic         rd_dirty_q [0:3];
 
@@ -185,8 +186,9 @@ module ares_l2 #(
   wire new_is_ddr_unc = (new_addr >= DDR_UNC_BASE) && (new_addr < (DDR_UNC_BASE + DDR_UNC_SIZE));
   wire new_is_ddr_c   = (new_addr >= DDR_BASE) && (new_addr < (DDR_BASE + DDR_SIZE));
 
-  wire [16:0] cur_tag = cur_addr[31:15];
-  wire [9:0]  cur_set = cur_addr[14:5];
+  wire [31:0] ld_addr_q = req_addr[sel_q];
+  wire [TAG_BITS-1:0] cur_tag = cur_addr[31:INDEX_BITS+5];
+  wire [INDEX_BITS-1:0] cur_set = cur_addr[INDEX_BITS+4:5];
   wire        cur_beat = cur_addr[4];
   wire [31:0] ddr_phys_addr = is_ddr_unc ? (DDR_BASE + (cur_addr - DDR_UNC_BASE)) : cur_addr;
   wire [31:0] cache_line_base = {cur_addr[31:5], 5'b0};
@@ -222,7 +224,7 @@ module ares_l2 #(
     else victim_way_q = lru_q[cur_set];
   end
 
-  function automatic logic [31:0] tag_to_addr(input logic [16:0] tag, input logic [9:0] set);
+  function automatic logic [31:0] tag_to_addr(input logic [TAG_BITS-1:0] tag, input logic [INDEX_BITS-1:0] set);
     tag_to_addr = {tag, set, 5'b0};
   endfunction
 
@@ -305,15 +307,19 @@ module ares_l2 #(
       refill_hi_q <= 128'd0;
       for (int unsigned w = 0; w < 4; w++) begin
         rd_line_q[w] <= 256'd0;
-        rd_tag_q[w] <= 17'd0;
+        rd_tag_q[w] <= '0;
         rd_valid_q[w] <= 1'b0;
         rd_dirty_q[w] <= 1'b0;
+`ifndef ARES_FPGA
+        // FPGA BRAM powers up zeroed; resetting 1024 sets here would turn the
+        // whole cache array into flip-flops.
         for (int unsigned s = 0; s < CACHE_SETS; s++) begin
-          tag_q[w][s] <= 17'd0;
+          tag_q[w][s] <= '0;
           valid_q[w][s] <= 1'b0;
           dirty_q[w][s] <= 1'b0;
           data_q[w][s] <= 256'd0;
         end
+`endif
       end
       for (int unsigned s = 0; s < CACHE_SETS; s++) lru_q[s] <= 2'd0;
     end else begin
@@ -358,7 +364,7 @@ module ares_l2 #(
               state_q <= S_DDR_REQ;
             end else if (new_is_ddr_c) begin
               for (int unsigned w = 0; w < 4; w++) begin
-                rd_tag_q[w] <= tag_q[w][req_addr[sel_q][14:5]];
+                rd_tag_q[w] <= tag_q[w][ld_addr_q[INDEX_BITS+4:5]];
                 rd_valid_q[w] <= valid_q[w][req_addr[sel_q][14:5]];
                 rd_dirty_q[w] <= dirty_q[w][req_addr[sel_q][14:5]];
                 rd_line_q[w] <= data_q[w][req_addr[sel_q][14:5]];

@@ -2,6 +2,7 @@
 // One ARES-L cluster: core + L1I + L1D + miniTensor + local port arbiter.
 module ares_cluster #(
   parameter logic [31:0] RESET_PC = 32'h0000_0000,
+  parameter int unsigned L1_BYTES = 8192,
   parameter logic [3:0]  HARTID   = 4'd0
 ) (
   input  logic         clk,
@@ -79,7 +80,7 @@ module ares_cluster #(
   logic [31:0] b_req_addr, b_req_wdata, b_rsp_rdata;
   logic [3:0]  b_req_wstrb;
 
-  ares_l1i u_l1i (
+  ares_l1i #(.SIZE_BYTES(L1_BYTES)) u_l1i (
     .clk, .rst,
     .cpu_req_valid(imem_req_valid), .cpu_req_ready(imem_req_ready),
     .cpu_req_addr(imem_req_addr), .cpu_rsp_valid(imem_rsp_valid), .cpu_rsp_data(imem_rsp_data),
@@ -90,7 +91,7 @@ module ares_cluster #(
     .invalidate(icache_invalidate), .invalidate_done(icache_invalidate_done), .busy()
   );
 
-  ares_l1d u_l1d (
+  ares_l1d #(.SIZE_BYTES(L1_BYTES)) u_l1d (
     .clk, .rst,
     .cpu_req_valid(dmem_req_valid), .cpu_req_ready(dmem_req_ready),
     .cpu_req_write(dmem_req_write), .cpu_req_addr(dmem_req_addr),
@@ -120,6 +121,19 @@ module ares_cluster #(
   logic        mt_status_rd;
   logic [31:0] mt_status, mt_result;
 
+`ifdef ARES_NO_MT
+  // FPGA build: ADS cannot elaborate the CV-X-IF interface, use the stub.
+  mt_cluster_stub u_mt (
+    .clk, .rst,
+    .reg_wr_en(mt_reg_wr_en), .reg_wr_idx(mt_reg_wr_idx), .reg_wr_data(mt_reg_wr_data),
+    .status_rd(mt_status_rd), .status(mt_status), .result_data(mt_result),
+    .l2_req_valid(mt_l2_req_valid), .l2_req_ready(mt_l2_req_ready),
+    .l2_req_write(mt_l2_req_write), .l2_req_addr(mt_l2_req_addr),
+    .l2_req_wdata(mt_l2_req_wdata), .l2_req_wstrb(mt_l2_req_wstrb),
+    .l2_rsp_valid(mt_l2_rsp_valid), .l2_rsp_ready(mt_l2_rsp_ready), .l2_rsp_rdata(mt_l2_rsp_rdata),
+    .mt_irq(mt_irq)
+  );
+`else
   mt_cluster u_mt (
     .clk, .rst,
     .reg_wr_en(mt_reg_wr_en), .reg_wr_idx(mt_reg_wr_idx), .reg_wr_data(mt_reg_wr_data),
@@ -130,6 +144,7 @@ module ares_cluster #(
     .l2_rsp_valid(mt_l2_rsp_valid), .l2_rsp_ready(mt_l2_rsp_ready), .l2_rsp_rdata(mt_l2_rsp_rdata),
     .mt_irq(mt_irq)
   );
+`endif
 
   // --------------------------------------------------- bypass / local MMIO
   typedef enum logic [2:0] {

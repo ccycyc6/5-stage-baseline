@@ -2,8 +2,16 @@
 // ARES-P4: four ARES-L clusters, shared L2, DDR3, CLINT/PLIC, mailbox,
 // UART/GPIO/SPI, and the miniTensor accelerators.
 module ares_p4_soc #(
-  parameter logic [31:0] RESET_PC = 32'h0000_0000,
-  parameter              DDR_FILE = ""
+  parameter logic [31:0] RESET_PC    = 32'h0000_0000,
+  parameter              DDR_FILE    = "",
+  // Boot ROM / QSPI window sizes; the board build shrinks the unused ROM so
+  // the BRAM budget goes to the cache and the on-chip memory image.
+  parameter int unsigned L1_BYTES    = 8192,
+  parameter int unsigned CACHE_SETS  = 1024,
+  parameter int unsigned SCRATCH_WORDS = 12288,
+  parameter int unsigned ROM_WORDS   = 16384,
+  parameter int unsigned QSPI_WORDS  = 16384,
+  parameter int unsigned ONCHIP_WORDS = 65536
 ) (
   input  logic        clk,
   input  logic        rst,
@@ -50,7 +58,7 @@ module ares_p4_soc #(
   genvar h;
   generate
     for (h = 0; h < 4; h = h + 1) begin : g_cluster
-      ares_cluster #(.RESET_PC(RESET_PC), .HARTID(4'(h))) u_cluster (
+      ares_cluster #(.RESET_PC(RESET_PC), .HARTID(4'(h)), .L1_BYTES(L1_BYTES)) u_cluster (
         .clk, .rst,
         .l2_req_valid(c_l2_req_valid[h]), .l2_req_ready(c_l2_req_ready[h]),
         .l2_req_write(c_l2_req_write[h]), .l2_req_addr(c_l2_req_addr[h]),
@@ -144,7 +152,12 @@ module ares_p4_soc #(
   assign irq_src_ext[12:9] = mt_irq;
   assign irq_src_ext[31:13] = 19'd0;
 
-  ares_l2 u_l2 (
+  ares_l2 #(
+    .CACHE_SETS(CACHE_SETS),
+    .SCRATCH_WORDS(SCRATCH_WORDS),
+    .ROM_WORDS(ROM_WORDS),
+    .QSPI_WORDS(QSPI_WORDS)
+  ) u_l2 (
     .clk, .rst,
     .req_valid(l2_req_valid), .req_ready(l2_req_ready),
     .req_write(l2_req_write), .req_addr(l2_req_addr),
@@ -157,7 +170,7 @@ module ares_p4_soc #(
     .mmio_req_wdata, .mmio_req_wstrb, .mmio_rsp_valid, .mmio_rsp_ready, .mmio_rsp_rdata
   );
 
-  pango_ddr3_axi #(.DDR_FILE(DDR_FILE)) u_ddr (
+  pango_ddr3_axi #(.DDR_FILE(DDR_FILE), .ONCHIP_DEPTH(ONCHIP_WORDS)) u_ddr (
     .clk, .rst,
     .req_valid(ddr_req_valid), .req_ready(ddr_req_ready), .req_write(ddr_req_write),
     .req_addr(ddr_req_addr), .req_wdata(ddr_req_wdata), .req_wstrb(ddr_req_wstrb),

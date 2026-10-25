@@ -1,6 +1,7 @@
 # ARES-P4: 4x ARES-L RISC-V SoC with miniTensor YOLO acceleration
 
-Target board: Pango 200Pro+ (PG2L200H-6IFBG676, 159.8k LUT6 / 415 DRM / 740 APM).
+Target board: Pango 200Pro+ (PG2L200H-**6IFBB676**, 159.8k LUT6 / 415 DRM / 740 APM,
+27 MHz system clock, HDMI via the on-board MS7210 PHY).
 
 ARES-P4 is a complete FPGA-oriented SoC:
 
@@ -19,6 +20,40 @@ ARES-P4 is a complete FPGA-oriented SoC:
   miniTensor DMA/GEMM regression, YOLO detector.
 
 See docs/implementation_plan.md, docs/verification_report.md and docs/register_map.md.
+
+## Board flow (Pangu 200Pro+, real silicon)
+
+The FPGA build does not use the Verilator tree directly: Pango ADS only supports a
+SystemVerilog subset, so `tools/pango_prep.py` mirrors `rtl/` into `build/pango/syn/rtl`.
+Everything is driven by one command:
+
+    powershell -ExecutionPolicy Bypass -File tools\build_board.ps1
+
+It builds the firmware (rv32im, 27 MHz, UART 115200), copies the `$readmemh` image
+into `fpga/pango/syn/fw.hex`, regenerates the ADS-compatible RTL, then runs
+compile → synthesize → dev_map → pnr → gen_bit_stream, leaving
+`fpga/pango/syn/generate_bitstream/ares_p4.sbit`.
+
+Download with `cdt_js.exe -port 65420` then
+`cdt_cfg.exe -file fpga/pango/program.tcl -args {<sbit>}`.
+
+On-board image recognition bitstream is built (2026-10-26): the `vision` firmware
+(32x32 frame -> 16x16 features -> 5 shape classes, result over UART) is baked into
+`ares_p4_board.sbit`; the CoreMark image is kept as `coremark_ares_p4_board.sbit`.
+Build the
+`vision` firmware target, download the bitstream and use `tools/img2raw.py` +
+`tools/send_image.ps1`. Step-by-step guide: `docs/board_guide_vision.md`.
+
+Board facts, pin map, bring-up steps and the remaining DDR3/HDMI/miniTensor work:
+see `docs/board_bringup.md`, `docs/contest_checklist.md` and
+`fpga/pango/board_pinmap.md`.
+
+Verified on 2026-10-18 (PDS 2022.2-SP6.4, PG2L200H-6IFBB676):
+compile / synthesize / dev_map / pnr / gen_bit_stream all pass and produce
+`build/pango/syn/generate_bitstream/ares_p4_board.sbit` (9,188,552 B).
+27 MHz timing: setup WNS +10.971 ns, hold WNS +0.068 ns, estimated Fmax
+38.36 MHz; one open item is a fast-corner hold of -0.073 ns on 60 endpoints.
+Resources: CLMA 45 %, LUT 25 %, FF 12 %, DRM 53 %, APM 8 %.
 
 ## Quick start
 

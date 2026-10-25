@@ -56,7 +56,7 @@ module ares_l1d #(
   logic [TAG_BITS-1:0]  tag_q   [0:WAYS-1][0:SETS-1];
   logic                 valid_q [0:WAYS-1][0:SETS-1];
   logic                 dirty_q [0:WAYS-1][0:SETS-1];
-  logic [LINE_BITS-1:0] data_q  [0:WAYS-1][0:SETS-1];
+  (* PAP_RAM_STYLE = "BLOCK" *) logic [LINE_BITS-1:0] data_q [0:WAYS-1][0:SETS-1];
   logic                 lru_q   [0:SETS-1];
 
   typedef enum logic [4:0] {
@@ -251,12 +251,14 @@ module ares_l1d #(
       flush_way_q <= 2'd0;
       for (int unsigned w = 0; w < WAYS; w++) begin
         rd_line_q[w] <= '0;
+`ifndef ARES_FPGA
         for (int unsigned s = 0; s < SETS; s++) begin
           tag_q[w][s] <= '0;
           valid_q[w][s] <= 1'b0;
           dirty_q[w][s] <= 1'b0;
           data_q[w][s] <= '0;
         end
+`endif
       end
       for (int unsigned s = 0; s < SETS; s++) lru_q[s] <= 1'b0;
     end else begin

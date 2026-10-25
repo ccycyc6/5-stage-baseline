@@ -39,7 +39,7 @@ module ares_l1i #(
 
   logic [TAG_BITS-1:0] tag_q   [0:WAYS-1][0:SETS-1];
   logic                valid_q [0:WAYS-1][0:SETS-1];
-  logic [LINE_BITS-1:0] data_q [0:WAYS-1][0:SETS-1];
+  (* PAP_RAM_STYLE = "BLOCK" *) logic [LINE_BITS-1:0] data_q [0:WAYS-1][0:SETS-1];
   logic                lru_q   [0:SETS-1]; // 1 = way 0 is LRU
 
   typedef enum logic [3:0] {
@@ -141,11 +141,15 @@ module ares_l1i #(
       line_base_q <= 32'd0;
       for (int unsigned w = 0; w < WAYS; w++) begin
         rd_line_q[w] <= '0;
+`ifndef ARES_FPGA
+        // FPGA BRAM powers up zeroed, so the arrays must not be reset: a
+        // per-line reset would force every cache bit into a flip-flop.
         for (int unsigned s = 0; s < SETS; s++) begin
           tag_q[w][s] <= '0;
           valid_q[w][s] <= 1'b0;
           data_q[w][s] <= '0;
         end
+`endif
       end
       for (int unsigned s = 0; s < SETS; s++) lru_q[s] <= 1'b0;
     end else begin

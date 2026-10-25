@@ -32,6 +32,7 @@ module ddr3_model #(
   state_t state_q;
   logic [127:0] rsp_data_q;
   logic [31:0]  base_q;
+  logic [31:0]  old_w, nw_w;   // hoisted: ADS rejects declarations in unnamed blocks
 
   assign req_ready = (state_q == D_IDLE);
   assign rsp_valid = (state_q == D_RSP);
@@ -54,14 +55,12 @@ module ddr3_model #(
             if (req_write) begin
               for (int unsigned i = 0; i < 4; i++) begin
                 if (req_wstrb[4*i +: 4] != 4'd0) begin
-                  logic [31:0] old;
-                  logic [31:0] nw;
-                  old = word_at(req_addr + i*4);
-                  nw = old;
+                  old_w = word_at(req_addr + i*4);
+                  nw_w = old_w;
                   for (int unsigned b = 0; b < 4; b++) begin
-                    if (req_wstrb[4*i + b]) nw[b*8 +: 8] = req_wdata[32*i + b*8 +: 8];
+                    if (req_wstrb[4*i + b]) nw_w[b*8 +: 8] = req_wdata[32*i + b*8 +: 8];
                   end
-                  mem[req_addr[24:2] + i] <= nw;
+                  mem[req_addr[24:2] + i] <= nw_w;
                 end
               end
               rsp_data_q <= 128'd0;

@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* ARES-P4 bare-metal CoreMark port. */
+/* ARES-P4 bare-metal CoreMark port.  Board builds pass -DCPU_HZ=<hz>. */
+#ifndef CPU_HZ
 #define CPU_HZ              100000000u
+#endif
 
 #ifndef ITERATIONS
 #define ITERATIONS          200

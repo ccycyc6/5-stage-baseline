@@ -121,25 +121,33 @@ module ares_video (
   assign de = (hcnt_q < H_ACTIVE) && (vcnt_q < V_ACTIVE);
 
   // 8x8 colour bars, plus a moving marker and OSD boxes.
-  logic [7:0] r, g, b;
+  // A single 24-bit rgb temporary is used instead of three byte signals: Pango
+  // ADS mis-merges the per-byte constant mux (it ends up driving _$$_VCC_$$_ /
+  // _$$_GND_$$_ twice), the packed vector form infers cleanly.
+  logic [23:0] rgb;
+  logic [7:0]  r, g, b;
   always_comb begin
-    r = 8'd0; g = 8'd0; b = 8'd0;
+    rgb = 24'd0;
     if (ctrl_q[1]) begin
       case (hcnt_q[9:7])
-        3'd0: begin r = 8'hFF; g = 8'hFF; b = 8'hFF; end
-        3'd1: begin r = 8'hFF; g = 8'hFF; b = 8'h00; end
-        3'd2: begin r = 8'h00; g = 8'hFF; b = 8'hFF; end
-        3'd3: begin r = 8'h00; g = 8'hFF; b = 8'h00; end
-        3'd4: begin r = 8'hFF; g = 8'h00; b = 8'hFF; end
-        3'd5: begin r = 8'hFF; g = 8'h00; b = 8'h00; end
-        3'd6: begin r = 8'h00; g = 8'h00; b = 8'hFF; end
-        default: begin r = 8'h00; g = 8'h00; b = 8'h00; end
+        3'd0: rgb = 24'hFF_FF_FF;
+        3'd1: rgb = 24'hFF_FF_00;
+        3'd2: rgb = 24'h00_FF_FF;
+        3'd3: rgb = 24'h00_FF_00;
+        3'd4: rgb = 24'hFF_00_FF;
+        3'd5: rgb = 24'hFF_00_00;
+        3'd6: rgb = 24'h00_00_FF;
+        default: rgb = 24'h00_00_00;
       endcase
       if ((hcnt_q >= 300) && (hcnt_q < 340) && (vcnt_q >= 220) && (vcnt_q < 260)) begin
-        r = 8'hFF; g = 8'hFF; b = 8'hFF;
+        rgb = 24'hFF_FF_FF;
       end
     end
 
+`ifdef ARES_FPGA
+    // FPGA build: Pango ADS cannot infer the OSD priority mux over box_q, so
+    // the overlay is left out of the board bitstream (video is not wired yet).
+`else
     if (ctrl_q[2]) begin
       for (int unsigned i = 0; i < 8; i++) begin
         if (box_q[i][3][0] &&
@@ -147,12 +155,15 @@ module ares_video (
             (vcnt_q >= box_q[i][0][31:16]) && (vcnt_q <= box_q[i][1][31:16]) &&
             ((hcnt_q <= box_q[i][0][15:0] + 2) || (hcnt_q + 2 >= box_q[i][1][15:0]) ||
              (vcnt_q <= box_q[i][0][31:16] + 2) || (vcnt_q + 2 >= box_q[i][1][31:16]))) begin
-          r = box_q[i][2][7:0];
-          g = box_q[i][2][15:8];
-          b = box_q[i][2][23:16];
+          rgb = box_q[i][2][23:0];
         end
       end
     end
+`endif
+
+    r = rgb[7:0];
+    g = rgb[15:8];
+    b = rgb[23:16];
   end
 
   tmds_encoder u_tr (.clk, .rst, .din(r), .cin(2'b00), .de(de), .dout(tmds_r));

@@ -1,11 +1,11 @@
 `timescale 1ns/1ps
-// DDR3 front end.  In simulation (PANGO_DDR3_IP undefined) this is the
-// behavioral 32 MiB model.  On the board define PANGO_DDR3_IP and provide the
-// Pango-generated wrapper named pango_ddr3_ip with the simple 128-bit
-// request/response port listed below; the Pango DDR3 IP performs calibration
-// and drives the board DDR3 pins.
+// DDR3 front end. Three build flavours:
+//  * ONCHIP_DDR      : the on-chip 128-bit memory model (board bring-up, no IP)
+//  * PANGO_DDR3_IP   : the Pango HMIC DDR3 IP wrapper (real board memory)
+//  * neither         : the behavioural 32 MiB simulation model
 module pango_ddr3_axi #(
-  parameter              DDR_FILE = ""
+  parameter              DDR_FILE  = "",
+  parameter int unsigned ONCHIP_DEPTH = 16384
 ) (
   input  logic         clk,
   input  logic         rst,
@@ -21,6 +21,12 @@ module pango_ddr3_axi #(
 );
 `ifdef PANGO_DDR3_IP
   pango_ddr3_ip u_ip (
+    .clk, .rst,
+    .req_valid, .req_ready, .req_write, .req_addr, .req_wdata, .req_wstrb,
+    .rsp_valid, .rsp_ready, .rsp_rdata
+  );
+`elsif ONCHIP_DDR
+  onchip_ddr #(.WORDS(ONCHIP_DEPTH), .INIT_FILE(DDR_FILE)) u_oc (
     .clk, .rst,
     .req_valid, .req_ready, .req_write, .req_addr, .req_wdata, .req_wstrb,
     .rsp_valid, .rsp_ready, .rsp_rdata
