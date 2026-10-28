@@ -211,9 +211,12 @@ SYS P=1 D=1 H=1 C=1
 
 - **日期**：2026-10-29   **提交**：`1997430`   **tag**：待上板通过后打 `board-b6`
 - **位流**：`build/pango/b6/generate_bitstream/video_fb_top.sbit`（9,188,552 B）
-- **sha256**：`B0144D71E196D34D703989ED1C4F257720871C2DDE77CCD9E79F9B45ADFB20EA`
-- **资源**：LUT 25,072/159,800 (15.69%)，REG 14,114，**DRM 49/415**
-- **时序**：0 failing；sys_clk WNS +16.5 ns；DDR3 域 WNS +0.115 ns（偏紧但 MET）
+- **sha256**：`73485295705A39A2ED429B3552A72D6BD4B22F6F03A9E120DB40C5B32D1EF20A`
+  （第一次构建 `B0144D71…` 的 SoC 串口 RX 被焊死在 1，loader 收不到数据，已修）
+- **资源**：LUT 25,132/159,800 (15.73%)，REG 14,155，**DRM 49/415**
+- **时序**：setup 全部 MET（DDR3 域 +2.0 ns，sys_clk +16.5 ns）；
+  **hold 有 5 条 -0.07…-0.005 ns 的违例**，都在 SoC 的 tensor_controller 上
+  （27 MHz 下无实际影响，属于签核边角；换 seed 或加 hold fix 可收）
 - **耗时**：36m10s（seed 5）
 - **做法**：SoC 放在 `video_fb_top` 内部（`ifdef BOARD_SOC`），视频层级不变，
   S2 的三份约束文件原样使用
