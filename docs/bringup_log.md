@@ -13,7 +13,7 @@
 | B0 | 厂商位流钉死板子 | ✅ PASS | 2026-10-28 | 厂商原版 | — | — | 板子/下载/串口正常 |
 | B1 | 最小位流（时钟/UART 活着） | ✅ PASS | 2026-10-28 | `284C6E38…` | 0/415 | +32.4 ns | 时钟/复位/UART/引脚/流程全部正常 |
 | B2 | CPU + ROM 打印 | ✅ PASS | 2026-10-28 | `A5581886…` | 8/415 | +17.7 ns | 板上串口 + LED 均符合预期 |
-| B3 | BRAM 读写自检 | 🔶 位流就绪 | 2026-10-28 | `7BE6DDC8…` | 16/415 | +18.6 ns | 仿真 PASS，待上板 |
+| B3 | BRAM 读写自检 | ✅ PASS | 2026-10-28 | `7BE6DDC8…` | 16/415 | +18.6 ns | 板上 BRAM PASS 持续输出 |
 | B4 | 串口 loader | ☐ | | | | | |
 | B5 | 张量上板 | ☐ | | | | | |
 | B6 | 并入视频 | ☐ | | | | | |
@@ -78,7 +78,7 @@
 
 ## B3 — BRAM 自检
 
-- **日期**：2026-10-28   **提交**：`b1daa0b`   **tag**：待上板通过后打 `board-b3`
+- **日期**：2026-10-28   **提交**：`b1daa0b`   **tag**：`board-b3`
 - **位流**：`build/pango/b3/generate_bitstream/board_cpu.sbit`（9,188,552 B）
 - **sha256**：`7BE6DDC89B96CD5C6BF4706C0F9ADDDA065AAE8E8F37A554A5B7C6FD4A61B380`
 - **资源**：LUT 3990/159800 (2.50%)，REG 3010/319600，**DRM 16/415**
@@ -88,15 +88,21 @@
 - **上板前仿真门**：`sim/rtl/tb_b3.sv` → `TB PASS: BRAM read-back verified by the CPU`
 - **测试内容**：2048 字写入 0x8000_0000 后读回比对；再测字节写使能（sb）和
   半字写使能（sh）；失败会打印 `addr/got/exp`
-- **上板现象**：⏳ 待烧写
+- **上板现象**（用户实测，2026-10-28 20:57）：
 
 ```text
-（待填：串口应每 ~1 s 出现一行 "BRAM PASS mcycle=XXXXXXXX"）
+BRAM PASS mcycle=242fc0d3
+BRAM PASS mcycle=24f0b17e
+BRAM PASS mcycle=25b1a243
 ```
 
+- **注意**：串口会**一直**每秒重复这一行，这是心跳（证明还在跑），不是还在测。
+  测试本身在复位后不到 1 ms 就做完了：2048 写 + 2048 读各约 5 拍。
 - **注意**：`rtl/board/boot_rom.v` 现在装的是 B3 固件。要重建 B2 位流，
   先 `python tools/mkrom.py build/fw/b2_hello.bin rtl/board/boot_rom.v`。
-- **结论**：构建 + 仿真通过；上板待验证
+- **结论**：**PASS**。BRAM 推断、字节写使能、L2 地址路由、128-bit 拍协议全部在板上验证。
+  至此，旧"没反应"的两个嫌疑（CPU / BRAM 初值）都已被独立证明是好的——
+  剩下的只有"固件怎么进内存"这一环，正是 B4 要做的。
 
 ---
 
