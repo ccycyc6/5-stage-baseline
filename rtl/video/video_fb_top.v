@@ -72,7 +72,8 @@ module video_fb_top #(
 
     // ---------------------------------------------------------- board status
     output wire [7:0]  led,
-    output wire        uart_tx
+    output wire        uart_tx,
+    input  wire        uart_rx        // B24, used by the SoC boot loader
 );
 
     // ------------------------------------------------------- clock / reset
@@ -631,7 +632,7 @@ module video_fb_top #(
     ) u_soc (
         .clk             (clk_27m),
         .rst             (soc_rst),
-        .uart_rx         (1'b1),
+        .uart_rx         (uart_rx),
         .uart_tx         (soc_uart_tx),
         .gpio_in         (32'd0),
         .gpio_out        (),
