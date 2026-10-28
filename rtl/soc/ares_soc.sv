@@ -8,7 +8,8 @@ module ares_soc #(
   parameter              DDR_FILE      = "",
   parameter int unsigned L1_BYTES      = 8192,
   parameter int unsigned SCRATCH_WORDS = 12288,
-  parameter int unsigned ROM_WORDS     = 16384
+  parameter int unsigned ROM_WORDS     = 16384,
+  parameter int unsigned DDR_WORDS     = 2048
 ) (
   input  logic        clk,
   input  logic        rst,
@@ -87,6 +88,14 @@ module ares_soc #(
   // full because the ADS preparer cannot expand the first implicit .port of a
   // list that starts right after an `endif.
   ddr_stub u_ddr (
+    .clk, .rst,
+    .req_valid(ddr_req_valid), .req_ready(ddr_req_ready), .req_write(ddr_req_write),
+    .req_addr(ddr_req_addr), .req_wdata(ddr_req_wdata), .req_wstrb(ddr_req_wstrb),
+    .rsp_valid(ddr_rsp_valid), .rsp_ready(ddr_rsp_ready), .rsp_rdata(ddr_rsp_rdata)
+  );
+`elsif ARES_BRAM
+  // B3: the same beat protocol, backed by on-chip block RAM instead of DDR3.
+  ddr_bram #(.WORDS(DDR_WORDS)) u_ddr (
     .clk, .rst,
     .req_valid(ddr_req_valid), .req_ready(ddr_req_ready), .req_write(ddr_req_write),
     .req_addr(ddr_req_addr), .req_wdata(ddr_req_wdata), .req_wstrb(ddr_req_wstrb),
