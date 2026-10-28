@@ -86,23 +86,36 @@ module mt_cvxif_shim #(
   logic        done_q, err_q, accept_err_q, kick_err_q;
 
   // ---------------------------------------------------------------------------
-  // Command queue
+  // Command queue (mt_cmd_fifo owns the storage; this module only sequences)
   // ---------------------------------------------------------------------------
-  localparam int unsigned PTR_W = (FIFO_DEPTH > 1) ? $clog2(FIFO_DEPTH) : 1;
-  localparam int unsigned CNT_W = $clog2(FIFO_DEPTH + 1);
+  wire        fifo_full, fifo_empty;
+  wire [31:0] fifo_count;
+  wire [31:0] fifo_head_instr, fifo_head_rs1, fifo_head_rs2;
+  wire        fifo_push, fifo_pop;
 
-  logic [31:0] fifo_instr [0:FIFO_DEPTH-1];
-  logic [31:0] fifo_rs1   [0:FIFO_DEPTH-1];
-  logic [31:0] fifo_rs2   [0:FIFO_DEPTH-1];
-  logic [PTR_W-1:0] fifo_head_q, fifo_tail_q;
-  logic [CNT_W-1:0] fifo_count_q;
+  wire kick = reg_wr_en && (reg_wr_idx == IDX_KICK) && reg_wr_data[0];
 
-  wire kick       = reg_wr_en && (reg_wr_idx == IDX_KICK) && reg_wr_data[0];
-  wire fifo_full  = (fifo_count_q == CNT_W'(FIFO_DEPTH));
-  wire fifo_push  = kick && !fifo_full;
-  wire fifo_pop   = (state_q == S_IDLE) && (fifo_count_q != CNT_W'(0));
+  assign fifo_push = kick && !fifo_full;
+  assign fifo_pop  = (state_q == S_IDLE) && !fifo_empty;
+  assign busy      = !fifo_empty || (state_q != S_IDLE);
 
-  wire busy = (fifo_count_q != CNT_W'(0)) || (state_q != S_IDLE);
+  mt_cmd_fifo #(
+    .DEPTH(FIFO_DEPTH)
+  ) u_cmd_fifo (
+    .clk,
+    .rst,
+    .push(fifo_push),
+    .push_instr(stg_instr_q),
+    .push_rs1(stg_rs1_q),
+    .push_rs2(stg_rs2_q),
+    .pop(fifo_pop),
+    .head_instr(fifo_head_instr),
+    .head_rs1(fifo_head_rs1),
+    .head_rs2(fifo_head_rs2),
+    .empty(fifo_empty),
+    .full(fifo_full),
+    .count(fifo_count)
+  );
 
   assign status      = {27'd0, kick_err_q, accept_err_q, err_q, done_q, busy};
   assign result_data = result_data_q;
@@ -110,26 +123,21 @@ module mt_cvxif_shim #(
   // ---------------------------------------------------------------------------
   // CV-X-IF master drive
   // ---------------------------------------------------------------------------
-  // Every field is assigned below, so there is no '0 default: ADS trips over
-  // a whole-struct default assignment here.
-  always_comb begin
-    xif_req.issue_valid   = (state_q == S_ISSUE);
-    xif_req.issue_instr   = instr_q;
-    xif_req.issue_id      = id_q;
-
-    xif_req.register_valid    = (state_q == S_REGISTER);
-    xif_req.register_id       = id_q;
-    xif_req.register_rs0      = rs1_q;
-    xif_req.register_rs1      = rs2_q;
-    xif_req.register_rs_valid = 2'b11;
-
-    // Held, not pulsed -- see the header comment.
-    xif_req.commit_valid = (state_q == S_COMMIT_WAIT) || (state_q == S_WAIT_RESULT);
-    xif_req.commit_id    = id_q;
-    xif_req.commit_kill  = 1'b0;
-
-    xif_req.result_ready = (state_q == S_WAIT_RESULT);
-  end
+  // Continuous assignment, not always_comb: driving a packed-struct output
+  // from a procedural block makes ADS abort with Flow-0189 in this module.
+  assign xif_req.issue_valid      = (state_q == S_ISSUE);
+  assign xif_req.issue_instr      = instr_q;
+  assign xif_req.issue_id         = id_q;
+  assign xif_req.register_valid   = (state_q == S_REGISTER);
+  assign xif_req.register_id      = id_q;
+  assign xif_req.register_rs0     = rs1_q;
+  assign xif_req.register_rs1     = rs2_q;
+  assign xif_req.register_rs_valid = 2'b11;
+  // Held, not pulsed -- see the header comment.
+  assign xif_req.commit_valid     = (state_q == S_COMMIT_WAIT) || (state_q == S_WAIT_RESULT);
+  assign xif_req.commit_id        = id_q;
+  assign xif_req.commit_kill      = 1'b0;
+  assign xif_req.result_ready     = (state_q == S_WAIT_RESULT);
 
   // ---------------------------------------------------------------------------
   // Register file and control FSM
@@ -150,9 +158,6 @@ module mt_cvxif_shim #(
       err_q        <= 1'b0;
       accept_err_q <= 1'b0;
       kick_err_q   <= 1'b0;
-      fifo_head_q  <= '0;
-      fifo_tail_q  <= '0;
-      fifo_count_q <= '0;
     end else begin
       if (reg_wr_en) begin
         case (reg_wr_idx)
@@ -168,20 +173,9 @@ module mt_cvxif_shim #(
       // store path.  Note that on the very cycle a kick is accepted the staging
       // registers may also be written, so the push must read their current
       // values (non-blocking assignment does exactly that).
-      if (fifo_push) begin
-        fifo_instr[fifo_tail_q] <= stg_instr_q;
-        fifo_rs1[fifo_tail_q]   <= stg_rs1_q;
-        fifo_rs2[fifo_tail_q]   <= stg_rs2_q;
-        fifo_tail_q             <= fifo_tail_q + PTR_W'(1);
-      end else if (kick && fifo_full) begin
+      if (kick && fifo_full) begin
         kick_err_q <= 1'b1;
       end
-
-      case ({fifo_push, fifo_pop})
-        2'b10:   fifo_count_q <= fifo_count_q + CNT_W'(1);
-        2'b01:   fifo_count_q <= fifo_count_q - CNT_W'(1);
-        default: ;
-      endcase
 
       // A status read only consumes the flags once the queue has drained, so a
       // mid-batch poll cannot lose an error reported by an earlier command.
@@ -194,13 +188,12 @@ module mt_cvxif_shim #(
 
       case (state_q)
         S_IDLE: begin
-          if (fifo_count_q != CNT_W'(0)) begin
-            instr_q     <= fifo_instr[fifo_head_q];
-            rs1_q       <= fifo_rs1[fifo_head_q];
-            rs2_q       <= fifo_rs2[fifo_head_q];
-            fifo_head_q <= fifo_head_q + PTR_W'(1);
-            id_q        <= id_q + 4'd1;
-            state_q     <= S_ISSUE;
+          if (!fifo_empty) begin
+            instr_q <= fifo_head_instr;
+            rs1_q   <= fifo_head_rs1;
+            rs2_q   <= fifo_head_rs2;
+            id_q    <= id_q + 4'd1;
+            state_q <= S_ISSUE;
           end
         end
 
@@ -240,7 +233,7 @@ module mt_cvxif_shim #(
             err_q         <= err_q | xif_rsp.result_err;
             result_data_q <= xif_rsp.result_data;
             // Only the final command of a drained queue raises DONE.
-            if (fifo_count_q == CNT_W'(0)) done_q <= 1'b1;
+            if (fifo_empty) done_q <= 1'b1;
             state_q       <= S_IDLE;
           end
         end

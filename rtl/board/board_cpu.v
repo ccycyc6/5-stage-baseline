@@ -63,7 +63,7 @@ module board_cpu #(
     ares_soc #(
         .RESET_PC      (32'h0000_0000),
         .L1_BYTES      (2048),
-        .SCRATCH_WORDS (16),
+        .SCRATCH_WORDS (4096),
         .ROM_WORDS     (4096),
         .DDR_WORDS     (DDR_WORDS)
     ) u_soc (

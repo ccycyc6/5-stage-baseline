@@ -44,7 +44,7 @@ CORE_RTL := \
   rtl/core/ares_muldiv.sv rtl/cache/ares_l1i.sv rtl/cache/ares_dmem.sv \
   rtl/core/ares_l_core.sv
 SOC_RTL := \
-  rtl/soc/mt/mt_cvxif_shim.sv rtl/soc/mt/mt_dma_l2_bridge.sv rtl/soc/mt/mt_cluster.sv \
+  rtl/soc/mt/mt_cmd_fifo.sv rtl/soc/mt/mt_cvxif_shim.sv rtl/soc/mt/mt_dma_l2_bridge.sv rtl/soc/mt/mt_cluster.sv \
   rtl/soc/ares_core_complex.sv rtl/soc/ares_clint.sv rtl/soc/ares_uart.sv \
   rtl/soc/ares_gpio.sv rtl/soc/ares_mmio_bus.sv rtl/soc/ares_l2.sv \
   rtl/soc/ddr/ddr3_model.sv rtl/soc/ares_soc.sv
