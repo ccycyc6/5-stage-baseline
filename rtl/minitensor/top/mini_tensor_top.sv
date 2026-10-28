@@ -114,6 +114,10 @@ module mini_tensor_top #(
   // A struct member cannot be part-selected in ADS (Flow-0189), so the
   // instruction field is copied to a plain vector first.
   wire [31:0] issue_instr = xif_req.issue_instr;
+  // Same reason: the register operands are sliced in the commit state, and a
+  // part-select of a struct member is an ADS internal error (Flow-0189).
+  wire [31:0] reg_rs0 = xif_req.register_rs0;
+  wire [31:0] reg_rs1 = xif_req.register_rs1;
 
   wire issue_load = is_minitensor_load(issue_instr);
   wire issue_store = is_minitensor_store(xif_req.issue_instr);
@@ -426,13 +430,13 @@ module mini_tensor_top #(
             rs1_q <= xif_req.register_rs0;
             rs2_q <= xif_req.register_rs1;
             mem_addr_q <= xif_req.register_rs0;
-            ub_base_q <= xif_req.register_rs1[UB_ADDR_WIDTH-1:0];
-            tile_count_q <= xif_req.register_rs1[15:8];
-            vec_src_a_q <= xif_req.register_rs0[UB_ADDR_WIDTH-1:0];
-            vec_src_b_q <= xif_req.register_rs0[8 +: UB_ADDR_WIDTH];
-            vec_dst_q <= xif_req.register_rs1[UB_ADDR_WIDTH-1:0];
-            tensor_accumulate_q <= xif_req.register_rs1[TENSOR_GEMM_ACCUMULATE_BIT];
-            ep_config_addr_q <= xif_req.register_rs1[15:8];
+            ub_base_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
+            tile_count_q <= reg_rs1[15:8];
+            vec_src_a_q <= reg_rs0[UB_ADDR_WIDTH-1:0];
+            vec_src_b_q <= reg_rs0[8 +: UB_ADDR_WIDTH];
+            vec_dst_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
+            tensor_accumulate_q <= reg_rs1[TENSOR_GEMM_ACCUMULATE_BIT];
+            ep_config_addr_q <= reg_rs1[15:8];
             register_seen_q <= 1'b1;
             if (!register_match || !register_operands_valid)
               command_err_q <= 1'b1;
