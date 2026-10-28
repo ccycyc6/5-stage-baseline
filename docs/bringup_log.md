@@ -15,7 +15,7 @@
 | B2 | CPU + ROM 打印 | ✅ PASS | 2026-10-28 | `A5581886…` | 8/415 | +17.7 ns | 板上串口 + LED 均符合预期 |
 | B3 | BRAM 读写自检 | ✅ PASS | 2026-10-28 | `7BE6DDC8…` | 16/415 | +18.6 ns | 板上 BRAM PASS 持续输出 |
 | B4 | 串口 loader | ✅ PASS | 2026-10-28 | `3DCF8BA1…` | 40/415 | +19.2 ns | 上传 11192 B，loader 跳转后 C 应用跑起来 |
-| B5 | 张量上板 | 🔶 位流就绪 | 2026-10-28 | `5D52CA26…` | 40/415 | +17.1 ns | 仿真 PASS，待上板 |
+| B5 | 张量上板 | ✅ PASS | 2026-10-29 | `5D52CA26…` | 40/415 | +17.1 ns | 板上 golden diff 0 bytes，7468368 cycles |
 | B6-pre | 摄像头→DDR3→HDMI 独立位流 | ✅ PASS | 2026-10-28 | `F5D0EED6…` | 9/415 | 0 failing | 画面干净 |
 | B6 | 并入视频（+SoC） | ☐ | | | | | |
 | B7 | 摄像头 + OSD | ☐ | | | | | |
@@ -164,7 +164,7 @@ B4: mcycle=1790373925
 
 ## B5 — 张量
 
-- **日期**：2026-10-28   **提交**：`2ea5da0`   **tag**：待上板通过后打 `board-b5`
+- **日期**：2026-10-28   **提交**：`2ea5da0`   **tag**：`board-b5`
 - **位流**：`build/pango/b5/generate_bitstream/board_cpu.sbit`（9,188,552 B）
 - **sha256**：`5D52CA26C2194005E9C8DA909624A8599FF05685B48FE841310756E5D8857F42`
 - **资源**：LUT 19,776/159,800 (12.38%)，REG 8,169，**DRM 40/415**
@@ -172,17 +172,25 @@ B4: mcycle=1790373925
 - **全流程耗时**：29m37s（布线比前几关慢：CPU + 64 KiB scratch + 128 KiB 存储 + 张量）
 - **固件**：`build/fw/yolo_board.bin`（58,440 B，`tools/build_yolo_board.sh` 生成，UART_DIV=234）
 - **验证方式**：烧位流 → 用 B4 的 loader 上传固件（约 5 s）→ 串口
-- **现象**：⏳ 待烧写
+- **现象**（用户实测，2026-10-29 00:29）：
 
 ```text
-miniTensor self-check starting.
-miniTensor GEMM PASSED (K=12, 4x4 INT8, requant+ReLU).
+image ok, jump 0x80000000
 miniTensor detector: packed INT8 weights, 1 test images.
+  L1 mult=32275 shift=23 relu=1
+  L4 mult=31604 shift=22 relu=0
+  nmt: L1=2 L2=4 L3=4 L4=2
   img 0: detection centre cell (1.7, 1.4) -> pixel (6, 6), golden diff 0 bytes
-miniTensor detector: 1/1 images decoded, 17184 commands/image, 7292716 cycles, golden diff 0 bytes
+miniTensor detector: 1/1 images decoded, 17184 commands/image, 7468368 cycles, golden diff 0 bytes
+YOLO run returned 0
 ```
 
-- **结论**：ADS 综合 + 布局布线通过；上板待验证
+  周期数 7,468,368 比仿真的 7,292,716 多 2.4%——仿真里 BRAM 零延迟，板上每次访问
+  多几拍，属于预期差异，**数值结果逐字节相同**。
+
+- **结论**：**PASS**。CPU + 张量 + DMA + 4x4 GEMM + 向量单元 + epilogue 在真实 FPGA 上
+  逐字节正确。核心链路（core + tensor + memory + UART）到此全部验证完毕，
+  剩下的只有"合进视频"和"接摄像头"。
 
 ---
 
