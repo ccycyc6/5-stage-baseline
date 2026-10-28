@@ -15,7 +15,8 @@ param(
     [string]$Port = "COM5",
     [Parameter(Mandatory = $true)][string]$File,
     [int]$Baud = 115200,
-    [int]$ListenSeconds = 4
+    # 58 KB takes ~5 s to shift out at 115200; leave room for the loader reply.
+    [int]$ListenSeconds = 15
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +54,19 @@ catch {
 
 Start-Sleep -Milliseconds 100
 $sp.DiscardInBuffer()
+
+# Listen for a moment BEFORE sending: if the board was just reset it prints the
+# loader banner here, which also proves the SoC side is alive.
+$pre = ""
+$preUntil = (Get-Date).AddSeconds(1)
+while ((Get-Date) -lt $preUntil) {
+    try { $pre += $sp.ReadExisting() } catch { }
+    Start-Sleep -Milliseconds 50
+}
+if ($pre.Length -gt 0) {
+    Write-Host "----- board said before upload -----"
+    Write-Host $pre
+}
 
 Write-Host ("upload: {0} bytes payload, checksum 0x{1:X8}, {2} bytes on the wire" -f $payload.Length, $sum, $bytes.Length)
 $sp.Write($bytes, 0, $bytes.Length)
