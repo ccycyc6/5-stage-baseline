@@ -1,9 +1,9 @@
-#include "board.h"
+#include "ares_soc.h"
 #include <stdarg.h>
-#include "coremark/coremark.h"
+#include <stddef.h>
 
 #ifndef UART_DIV
-#define UART_DIV 868u
+#define UART_DIV 8u
 #endif
 
 void uart_init(uint32_t baud_div)

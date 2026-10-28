@@ -4,25 +4,20 @@ package ares_pkg;
   localparam int unsigned XLEN = 32;
   localparam int unsigned RESET_PC_DEFAULT = 32'h0000_0000;
 
-  // ARES-P4 physical memory map
+  // ARES single-core physical memory map (simulation configuration).
   localparam logic [31:0] ROM_BASE       = 32'h0000_0000;
   localparam logic [31:0] ROM_SIZE       = 32'h0001_0000;
   localparam logic [31:0] CLINT_BASE     = 32'h0001_0000;
-  localparam logic [31:0] PLIC_BASE      = 32'h0002_0000;
-  localparam logic [31:0] MBOX_BASE      = 32'h0003_0000;
   localparam logic [31:0] SCRATCH_BASE   = 32'h1000_0000;
   localparam logic [31:0] SCRATCH_SIZE   = 32'h0003_0000;
   localparam logic [31:0] DDR_UNC_BASE   = 32'h4000_0000;
   localparam logic [31:0] DDR_UNC_SIZE   = 32'h4000_0000;
   localparam logic [31:0] DDR_BASE       = 32'h8000_0000;
   localparam logic [31:0] DDR_SIZE       = 32'h4000_0000;
-  localparam logic [31:0] QSPI_BASE      = 32'hC000_0000;
-  localparam logic [31:0] QSPI_SIZE      = 32'h0100_0000;
   localparam logic [31:0] MMIO_BASE      = 32'hD000_0000;
   localparam logic [31:0] MMIO_SIZE      = 32'h0001_0000;
   localparam logic [31:0] MT_BASE        = 32'hE000_0000;
-  localparam logic [31:0] MT_SIZE        = 32'h0000_4000;
-  localparam logic [31:0] DEBUG_BASE     = 32'hF000_0000;
+  localparam logic [31:0] MT_SIZE        = 32'h0000_1000;
 
   // RISC-V opcodes
   localparam logic [6:0] OP_LUI      = 7'b0110111;

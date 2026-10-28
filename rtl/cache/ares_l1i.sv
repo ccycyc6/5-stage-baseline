@@ -141,17 +141,13 @@ module ares_l1i #(
       line_base_q <= 32'd0;
       for (int unsigned w = 0; w < WAYS; w++) begin
         rd_line_q[w] <= '0;
-`ifndef ARES_FPGA
-        // FPGA BRAM powers up zeroed, so the arrays must not be reset: a
-        // per-line reset would force every cache bit into a flip-flop.
         for (int unsigned s = 0; s < SETS; s++) begin
-          tag_q[w][s] <= '0;
-          valid_q[w][s] <= 1'b0;
-          data_q[w][s] <= '0;
+          tag_q[w][s] = '0;
+          valid_q[w][s] = 1'b0;
+          data_q[w][s] = '0;
         end
-`endif
       end
-      for (int unsigned s = 0; s < SETS; s++) lru_q[s] <= 1'b0;
+      for (int unsigned s = 0; s < SETS; s++) lru_q[s] = 1'b0;
     end else begin
       rsp_valid_q <= 1'b0;
 

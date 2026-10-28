@@ -48,12 +48,12 @@ module ares_bpu (
   integer i;
   always_ff @(posedge clk) begin
     if (rst) begin
-      for (i = 0; i < 256; i = i + 1) bht[i] <= 2'b01;
+      for (i = 0; i < 256; i = i + 1) bht[i] = 2'b01;
       for (i = 0; i < 64; i = i + 1) begin
-        btb_valid[i]  <= 1'b0;
-        btb_tag[i]    <= 24'd0;
-        btb_target[i] <= 32'd0;
-        btb_jal[i]    <= 1'b0;
+        btb_valid[i]  = 1'b0;
+        btb_tag[i]    = 24'd0;
+        btb_target[i] = 32'd0;
+        btb_jal[i]    = 1'b0;
       end
     end else if (update_en) begin
       if (update_is_cond) begin

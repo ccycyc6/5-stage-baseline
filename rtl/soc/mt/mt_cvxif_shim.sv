@@ -2,8 +2,8 @@
 // -----------------------------------------------------------------------------
 // mt_cvxif_shim -- MMIO -> CV-X-IF master adapter for miniTensor.
 //
-// Sits between the Mundus JYD perip bridge (32-bit MMIO) and mini_tensor_top's
-// CV-X-IF slave port.  The CPU programs MT_INSTR / MT_RS1 / MT_RS2 and pulses
+// Sits between the SoC 32-bit MMIO bridge and mini_tensor_top's CV-X-IF slave
+// port.  The CPU programs MT_INSTR / MT_RS1 / MT_RS2 and pulses
 // MT_KICK; this FSM synthesises the CV-X-IF
 //     issue -> register -> commit -> result
 // transaction for each queued command.
@@ -17,11 +17,9 @@
 //                        bit4 kick_err;  a read while not busy clears the flags
 //   0x14  MT_RESULT  R   result.data (miniTensor returns 0 today)
 //
-// Why a FIFO: on Mundus an MMIO *write* costs ~2 cycles (it just enters the
-// store buffer) but an MMIO *read* costs ~11, so a per-command status poll cost
-// more than the command itself.  With a queue the software pushes commands
-// back-to-back and polls once per batch; measured with mt_perf, a 1-row MT_LOAD
-// round trip was 57 cycles, dominated by polling.
+// Why a FIFO: an MMIO write is cheap but a status read costs more, so a
+// per-command poll costs more than the command itself.  With a queue the
+// software pushes commands back-to-back and polls once per batch.
 //
 // Two properties of mini_tensor_top drive the sequencer:
 //   * issue_ready is only high in S_IDLE, so one command is in flight at a time

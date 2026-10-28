@@ -1,23 +1,18 @@
-/*
+﻿/*
  * mt_detect.c -- deploy the trained, quantised detector on miniTensor.
  *
- * The weights come from integration/tools/pack_weights.py, which quantises the
+ * The weights come from tools/model/pack_weights.py, which quantises the
  * numpy-trained model to INT8, packs it into the exact memory layout the
  * accelerator consumes, and also computes the integer forward pass that
- * mirrors the RTL.  That integer result ships as \'det_gold\', so this command
+ * mirrors the RTL.  That integer result ships as 'det_gold', so this command
  * checks the hardware against the reference bit for bit rather than against a
  * tolerance.
  *
- * One subtlety: .rodata lives in cacheable DRAM, and the accelerator's DMA
- * reads physical memory directly.  Weights therefore have to be *staged* into
- * the uncached scratch window before the first MT_LOAD can see them.
+ * The packed image is staged into the scratch window before the first MT_LOAD
+ * because the accelerator's DMA reads physical memory directly.
  */
 #include <stdint.h>
-#include "board.h"
-#define rt_kprintf printf
-#define MSH_CMD_EXPORT_ALIAS(...)
-
-#include "board.h"
+#include "ares_soc.h"
 #include "mt.h"
 #include "mt_net.h"
 #include "mt_detect_weights.h"
@@ -69,33 +64,6 @@ static void det_cfg_from(const unsigned char *cfg, net_layer_t *L)
     L->nmt   = cfg[4];   /* weight tile size chosen by the packer */
 }
 
-/* Compare the first 16 bytes of a stage against the Python trace, so a
- * mismatch can be attributed to a specific layer. */
-static int det_probe_check(uint32_t idx, uint32_t off, const char *name,
-                           uint32_t img)
-{
-    uint32_t i;
-    int bad = 0;
-
-    for (i = 0; i < 16u; i++)
-    {
-        uint8_t got = det_rd8(off + i);
-        uint8_t exp = det_probe[(idx * 16u) + i];
-
-        if (got != exp)
-        {
-            if (bad < 2)
-            {
-                rt_kprintf("  img %u probe %s byte %u: got %02x expect %02x\n",
-                           (unsigned)img, name, (unsigned)i,
-                           (unsigned)got, (unsigned)exp);
-            }
-            bad++;
-        }
-    }
-    return bad;
-}
-
 static void det_make_layers(net_layer_t *L)
 {
     L[0] = (net_layer_t){32u, 32u, 4u, 8u, 3u, 1u, 1u, 0, 0u, 0,
@@ -130,7 +98,7 @@ int mt_detect_command(int argc, char **argv)
     (void)argc;
     (void)argv;
 
-    rt_kprintf("miniTensor detector: packed INT8 weights, %d test images.\n",
+    printf("miniTensor detector: packed INT8 weights, %d test images.\n",
                (int)DET_IMG_COUNT);
 
     det_make_layers(L);
@@ -149,17 +117,17 @@ int mt_detect_command(int argc, char **argv)
     det_copy_to_scratch(NET_CFG + DET_CFG_OFF_L3, det_cfg3, sizeof(det_cfg3));
     det_copy_to_scratch(NET_CFG + DET_CFG_OFF_L4, det_cfg4, sizeof(det_cfg4));
 
-    rt_kprintf("  L1 mult=%d shift=%u relu=%u\n", (int)L[0].mult,
+    printf("  L1 mult=%d shift=%u relu=%u\n", (int)L[0].mult,
                (unsigned)L[0].shift, (unsigned)L[0].relu);
-    rt_kprintf("  L4 mult=%d shift=%u relu=%u\n", (int)L[3].mult,
+    printf("  L4 mult=%d shift=%u relu=%u\n", (int)L[3].mult,
                (unsigned)L[3].shift, (unsigned)L[3].relu);
-    rt_kprintf("  nmt: L1=%u L2=%u L3=%u L4=%u\n",
+    printf("  nmt: L1=%u L2=%u L3=%u L4=%u\n",
                (unsigned)L[0].nmt, (unsigned)L[1].nmt,
                (unsigned)L[2].nmt, (unsigned)L[3].nmt);
 
     mt_reset_status();
     start = mt_rd_mcycle();
-    JYD_MMIO32(JYD_LED_ADDR) = 1u;
+    ares_mmio_write(ARES_LED_ADDR, 1u);
 
     for (img = 0; img < DET_IMG_COUNT; img++)
     {
@@ -200,7 +168,7 @@ int mt_detect_command(int argc, char **argv)
                     }
                 }
                 if (sum > 0) {
-                    rt_kprintf("  img %u: detection centre cell (%d.%d, %d.%d)"
+                    printf("  img %u: detection centre cell (%d.%d, %d.%d)"
                                " -> pixel (%d, %d), golden diff %d bytes\n",
                                (unsigned)img, (int)(sy / sum), (int)((sy * 10 / sum) % 10),
                                (int)(sx / sum), (int)((sx * 10 / sum) % 10),
@@ -209,32 +177,31 @@ int mt_detect_command(int argc, char **argv)
                                img_bad);
                     images_ok++;
                 } else {
-                    rt_kprintf("  img %u: no detection (golden diff %d bytes)\n",
+                    printf("  img %u: no detection (golden diff %d bytes)\n",
                                (unsigned)img, img_bad);
                 }
             }
         }
     }
 
-    JYD_MMIO32(JYD_LED_ADDR) = 0u;
+    ares_mmio_write(ARES_LED_ADDR, 0u);
     end = mt_rd_mcycle();
 
-    rt_kprintf("miniTensor detector: %d/%d images decoded, %u commands/image,"
+    printf("miniTensor detector: %d/%d images decoded, %u commands/image,"
                " %u cycles, golden diff %d bytes\n", images_ok, (int)DET_IMG_COUNT,
                (unsigned)(cmds / DET_IMG_COUNT), (unsigned)(end - start), bad);
     if (images_ok == 0) {
-        rt_kprintf("miniTensor detector FAILED: no detections\n");
+        printf("miniTensor detector FAILED: no detections\n");
         halt(50);
     }
     return 0;
 
 fail:
-    JYD_MMIO32(JYD_LED_ADDR) = 0u;
-    rt_kprintf("miniTensor detector FAILED at layer, rc=%d\n", rc);
+    ares_mmio_write(ARES_LED_ADDR, 0u);
+    printf("miniTensor detector FAILED at layer, rc=%d\n", rc);
     halt(51);
     return rc;
 }
-MSH_CMD_EXPORT_ALIAS(mt_detect_command, mt_detect, run the packed-weight detector.);
 int yolo_run(void)
 {
     return mt_detect_command(0, 0);

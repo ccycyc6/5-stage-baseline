@@ -25,41 +25,6 @@ __pycache__/
 .venv/
 venv/
 
-# miniTensor reference workspace: the RTL is vendored under rtl/minitensor.
-# Keep integration/tools (golden generator) and integration/bsp (reference
-# firmware); drop the multi-hundred-MB simulation build and model blobs.
-miniTensor/obj_dir/
-miniTensor/models/
-miniTensor/**/obj_dir/
-miniTensor/**/__pycache__/
-
-# ---------------------------------------------------------------- Pango PDS
-*.pds
-*.prj
-*.bit
-*.fs
-*.sbit
-*.rpt
-*.pds_bak
-*.pdsbak
-*.log
-pango_run/
-
-# 位流随仓库分发（各约 9 MB），其余构建产物仍然忽略
-!bitstream/
-!bitstream/*.sbit
-impl/
-syn/
-place/
-route/
-
-# ---------------------------------------------------------------- PDS scratch
-compile/
-logbackup/
-_probe/
-_smoke/
-_trial_synth/
-
 # ---------------------------------------------------------------- editors / OS
 .vscode/
 .idea/

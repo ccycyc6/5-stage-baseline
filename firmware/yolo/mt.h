@@ -4,16 +4,15 @@
 #include <stdint.h>
 
 /* -----------------------------------------------------------------------------
- * miniTensor MMIO control interface (Mundus JYD platform).
+ * miniTensor MMIO control interface.
  *
  * The accelerator is driven through a small MMIO register window; the hardware
- * adapter (npc/vsrc/testbench/jyd/mt_cvxif_shim.sv) synthesises the CV-X-IF
+ * adapter (rtl/soc/mt/mt_cvxif_shim.sv) synthesises the CV-X-IF
  * issue -> register -> commit -> result transaction for each command.
  *
- * Scratch buffers live in a 64 KiB DRAM slice that the CPU must only ever touch
- * through the uncached alias window.  Mundus caches only 0x8010_0000-0x8013_FFFF
- * and has no cache maintenance instructions, so the physical slice 0x8013_0000
- * is addressed as 0x8033_0000 and is therefore never cached.
+ * The scratch window is the L2 scratchpad at 0x1000_0000.  The CPU data path
+ * is uncached in this simulation configuration, so the accelerator DMA and the
+ * CPU observe the same bytes with no cache maintenance.
  * -------------------------------------------------------------------------- */
 
 #define MT_BASE        0xE0000000u
@@ -34,11 +33,11 @@
 #define MT_ST_ACCEPT_ERR (1u << 3)   /* unsupported funct7/funct3 */
 #define MT_ST_KICK_ERR   (1u << 4)   /* kick dropped: queue was full */
 
-/* Uncached scratch buffer: 64 KiB at physical 0x8013_0000. */
+/* Scratch buffer: 64 KiB at 0x1000_0000 (L2 scratchpad). */
 #define MT_BUF_BASE    0x10000000u
 #define MT_BUF_SIZE    0x00010000u
 
-/* Generous poll bound so a hardware fault cannot wedge an RT-Thread thread. */
+/* Generous poll bound so a hardware fault cannot wedge the firmware. */
 #define MT_POLL_LIMIT  2000000u
 
 #define MT_OPCODE      0x0Bu   /* custom-0 = 7'b0001011 */
@@ -98,10 +97,10 @@ static inline uint32_t mt_rd_mcycle(void)
     return value;
 }
 
-/* Command queue depth implemented in mt_cvxif_shim.sv.  On Mundus an MMIO
- * write costs ~2 cycles but an MMIO read ~11, so queueing several commands and
- * polling once per batch removes most of the per-command host overhead.
- * The driver keeps one slot free so a push can never be dropped. */
+/* Command queue depth implemented in mt_cvxif_shim.sv.  Each MMIO write costs
+ * a few cycles while a status read costs more, so queueing several commands and
+ * polling once per batch removes most of the per-command host overhead.  The
+ * driver keeps one slot free so a push can never be dropped. */
 #define MT_FIFO_DEPTH   8u
 #ifdef MT_BATCH_ONE
 #define MT_BATCH        1u

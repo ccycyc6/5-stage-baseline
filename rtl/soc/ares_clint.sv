@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
-// CLINT: 4 hart software interrupts, 64-bit mtime and per-hart mtimecmp.
+// CLINT: software interrupts, 64-bit mtime and per-hart mtimecmp.
 module ares_clint #(
-  parameter int unsigned HART_COUNT = 4
+  parameter int unsigned HART_COUNT = 1
 ) (
   input  logic        clk,
   input  logic        rst,

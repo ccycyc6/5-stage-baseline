@@ -1,146 +1,126 @@
-# ARES-P4: 4x ARES-L RISC-V SoC with miniTensor YOLO acceleration
+# ARES-S1: single-core RISC-V SoC with miniTensor YOLO acceleration
 
-Target board: Pango 200Pro+ (PG2L200H-**6IFBB676**, 159.8k LUT6 / 415 DRM / 740 APM,
-27 MHz system clock, HDMI via the on-board MS7210 PHY).
+Simulation-only configuration: **one ARES-L RV32IM core + one miniTensor
+accelerator**, built to run the packed INT8 YOLO detector.  There is no board
+top, FPGA flow, bitstream, video/HDMI or multi-hart/SMP code in this tree; those
+can be added later as a separate board adaptation.
 
-ARES-P4 is a complete FPGA-oriented SoC:
+## Configuration
 
-- 4x ARES-L 5-stage in-order RV32IM cores, one per AMP hart. Each core has a
-  2-way 8 KiB L1I, a 2-way 8 KiB write-back L1D, a 2-bit BHT + BTB branch
-  predictor, M-mode CSR/traps, and its own miniTensor accelerator.
-- Shared L2: 128 KiB 4-way cache + 192 KiB scratchpad, four core ports and one
-  video port, QoS arbitration, and a DDR3 master.
-- System: CLINT (4 harts), PLIC (32 sources / 4 contexts), mailbox/barrier,
-  Boot ROM trampoline, DDR3, QSPI window, UART/GPIO/SPI/I2C/SD/GbE stubs.
-- AI: 4x miniTensor (4x4 INT8 GEMM + VPU + epilogue) driven by a CV-X-IF host
-  adapter and a 128-bit DMA bridge. Packed INT8 YOLO detector firmware.
-- Video: 640x480@60 timing, colour-bar test pattern, 8-box OSD, HDMI TMDS
-  encoders. The OV5640/HDMI-IN capture/scaler register window is reserved.
-- Software: bare-metal runtime, CoreMark v1.0 port, SMP/mailbox test,
-  miniTensor DMA/GEMM regression, YOLO detector.
-
-## 上板（盘古 200Pro+ / PG2L200H-6IFBB676）
-
-- 上板指南（硬件、烧写、串口、图像识别、排错）：**[docs/board_guide.md](docs/board_guide.md)**
-- 可直接烧写的位流：**[bitstream/ares_p4_vision.sbit](bitstream/ares_p4_vision.sbit)**（图像识别 demo）
-  与 **[bitstream/ares_p4_coremark.sbit](bitstream/ares_p4_coremark.sbit)**（CoreMark），
-  说明见 [bitstream/README.md](bitstream/README.md)
-- 一键重建：`powershell -File tools\build_board.ps1 -Target vision`
-  （固件 → 128-bit 镜像 → ADS 兼容 RTL → compile/synthesize -ads/dev_map/pnr/gen_bit_stream，约 1 小时）
-
-Pango ADS 只支持 SystemVerilog 子集（无 interface/enum/隐式端口），
-`tools/pango_prep.py` 负责把 `rtl/` 机械改写成 `build/pango/syn/rtl` 后再综合；
-仿真仍使用原始 `rtl/`。
-
-实测（PG2L200H-6IFBB676，27 MHz）：setup WNS **+10.971 ns**（Fmax 38.4 MHz）、
-hold slow +0.068 ns、fast 角 −0.073 ns / 60 端点；CLMA 45%、LUT 25%、FF 12%、
-DRM 219.5/415（53%）、APM 8%；位流 9,188,552 B。
+- **Core**: ARES-L 5-stage in-order RV32IM, 2-way 8 KiB L1I, BHT + BTB branch
+  prediction, M-mode CSR/traps, machine timer/software/external interrupts.
+- **Data path**: uncached by design.  Every load/store is one 32-bit
+  transaction; cached DDR addresses are translated to the uncached alias.  This
+  keeps the CPU and the accelerator DMA on one physical view of memory.
+- **Accelerator**: one miniTensor (4x4 INT8 GEMM, vector unit, epilogue) driven
+  by a CV-X-IF MMIO shim and a 128-bit DMA bridge.
+- **Memory**: Boot ROM trampoline, 192 KiB scratchpad, 32 MiB behavioural DDR3
+  model, simple one-request memory router (no L2 cache).
+- **Peripherals**: UART (console), GPIO (LED/debug), CLINT.
+- **Software**: bare-metal runtime and the packed INT8 YOLO detector.
 
 ## Quick start
 
-Prerequisites: Verilator 5 or newer, riscv64-unknown-elf-gcc with the RV32IM
-multilib, Python 3.
+Prerequisites: Verilator 5+, `riscv64-unknown-elf-gcc` with the RV32IM
+multilib, Python 3.  On Windows, run the same commands from WSL.
 
-Commands (run from the repository root):
+```bash
+make lint     # Verilator lint
+make sim      # build the Verilator simulator
+make yolo     # build and run the YOLO detector (fails if the golden check fails)
+make clean
+```
 
-    make lint        # Verilator lint of the synthesizable SoC
-    make sim         # build the Verilator SoC simulator
-    make core-test   # directed 5-stage ISA test
-    make coremark    # CoreMark v1.0 on hart0
-    make smp         # 4-hart mailbox/barrier/scratchpad test
-    make mt-gemm     # miniTensor DMA + GEMM + accumulation + epilogue
-    make yolo        # packed INT8 YOLO detector on miniTensor
-    make video       # 640x480 timing / OSD / TMDS testbench
+Useful knobs:
 
-A longer CoreMark run:
+```bash
+make yolo DET_IMG_COUNT=8   # run the first 8 packed test images
+make yolo VERILATOR=verilator-5.0
+```
 
-    make coremark ITERATIONS=1000
+UART output is captured in `build/uart.log`.  The testbench loads the firmware
+image with `+DDR=build/yolo/yolo.hex`.
 
-For the board UART divisor:
+## Current result
 
-    make clean && make board
+```
+ARES-S1 YOLO detector / miniTensor INT8
+one ARES-L RV32IM core + one miniTensor
+miniTensor detector: packed INT8 weights, 1 test images.
+  img 0: detection centre cell (1.7, 1.4) -> pixel (6, 6), golden diff 0 bytes
+miniTensor detector: 1/1 images decoded, 17184 commands/image, ... cycles, golden diff 0 bytes
+YOLO run returned 0
+```
 
-The simulator loads a DDR image with a plusarg:
-
-    ./build/obj_soc/Vtb_soc +DDR=build/coremark/coremark.hex
-
-UART output is captured in build/uart.log.
-
-## Current results (Verilator, 100 MHz model)
-
-| Test | Result |
-|---|---|
-| Core directed ISA (arith/branch/load/store/mul/div/fence) | PASS |
-| CoreMark v1.0, 10 iterations | PASS, CRC 0xe714/0x1fd7/0x8e3a/0xfcaf |
-| CoreMark/MHz | 0.903 (90.2 iterations/s at 100 MHz) |
-| 4-hart mailbox/barrier/scratchpad | PASS |
-| miniTensor 4x4 GEMM, 9x accumulation, epilogue | PASS |
-| 64 KiB scratchpad byte test | PASS |
-| 640x480 video timing/OSD/TMDS | PASS |
-| YOLO detector execution | runs 17,184 commands/image, 6.37 M cycles; stage golden mismatch under investigation |
-
-The YOLO detector executes the full 3-conv + head graph and decodes the head
-map, but the current packed golden comparison shows a stage-1 tiling/spatial
-mismatch (documented in the 2026-10-18 commits; the YOLO path is not part of the board build).
+The detector executes the complete graph (3 convolutions + head) on the
+accelerator and matches the integer golden **bit for bit**.  The default
+single-image run is about 7.3 M model cycles at the 100 MHz simulation clock;
+`make yolo DET_IMG_COUNT=8` decodes all eight packed test images with a
+zero-byte golden diff (about 58 M cycles).
 
 ## Memory map
 
 | Base | Size | Region |
 |---|---:|---|
 | 0x0000_0000 | 64 KiB | Boot ROM (trampoline to DDR) |
-| 0x0001_0000 | 64 KiB | CLINT |
-| 0x0002_0000 | 64 KiB | PLIC |
-| 0x0003_0000 | 64 KiB | Mailbox / Barrier |
-| 0x1000_0000 | 192 KiB | L2 scratchpad / per-core scratch (板级 64 KiB) |
+| 0x0001_0000 | 64 KiB | CLINT (mtime / mtimecmp / msip) |
+| 0x1000_0000 | 192 KiB | L2 scratchpad (miniTensor windows + frames) |
 | 0x4000_0000 | 1 GiB | DDR3 uncached alias |
-| 0x8000_0000 | 1 GiB | DDR3 cached |
-| 0xC000_0000 | 64 KiB | QSPI simulation window |
-| 0xD000_0000 | 64 KiB | UART/GPIO/SPI/I2C/SD/GbE/Video/DMA |
-| 0xE000_0000 | 16 KiB | miniTensor 0-3 (4 KiB each) |
-| 0xF000_0000 | 64 KiB | Debug |
+| 0x8000_0000 | 1 GiB | DDR3 cached alias (instruction fetch) |
+| 0xD000_0000 | 64 KiB | UART / GPIO |
+| 0xE000_0000 | 4 KiB | miniTensor registers |
 
 ## Directory
 
-    rtl/common/        package + memory map
-    rtl/core/          ARES-L 5-stage core, CSR, BPU, mul/div, regfile
-    rtl/cache/         2-way L1I/L1D
-    rtl/soc/           L2, CLINT/PLIC/mailbox/UART/GPIO/SPI/MMIO bus
-    rtl/soc/mt/        CV-X-IF shim, DMA bridge, miniTensor wrapper + board stub
-    rtl/soc/video/     timing, OSD, TMDS + board stub
-    rtl/soc/ddr/       behavioural DDR3 model, Pango DDR3 front end, on-chip memory
-    rtl/board/         board top for the Pangu 200Pro+ (pins, reset, LEDs)
-    rtl/minitensor/    imported workspace miniTensor RTL
-    firmware/common/   startup, linker, runtime, board header
-    firmware/coremark/ CoreMark port
-    firmware/vision/   CPU-only 32x32 shape recognition demo (board default)
-    firmware/yolo/     miniTensor driver, conv engine, packed detector
-    firmware/tests/    ISA, scratchpad, SMP, miniTensor tests
-    sim/               Verilator testbenches
-    fpga/pango/        board constraints (.fdc), PDS flow, programmer script, DDR3 IP
-    bitstream/         prebuilt .sbit images + description
-    tools/             build/prep/image-conversion scripts
-    docs/              board_guide.md (the single up-to-date document)
+```
+rtl/common/        package + memory map
+rtl/core/          ARES-L core, CSR, BPU, mul/div, regfile
+rtl/cache/         L1 instruction cache + uncached data path
+rtl/soc/           SoC top, core complex, memory router, CLINT, UART, GPIO
+rtl/soc/mt/        CV-X-IF shim, DMA bridge, miniTensor wrapper
+rtl/soc/ddr/       behavioural DDR3 model
+rtl/minitensor/    miniTensor RTL
+firmware/common/   startup, linker, runtime, platform header
+firmware/yolo/     miniTensor driver, conv engine, packed detector
+sim/rtl/           Verilator SoC testbench
+sim/tools/         firmware image converter
+tools/model/       NumPy training/quantisation/packing tools
+```
 
-## FPGA flow
+## Detector and model tools
 
-The board build replaces the behavioural `ddr3_model` with `onchip_ddr`
-(128 KiB BRAM pre-loaded with the firmware image) and uses ADS-compatible
-stubs for the video subsystem and the miniTensor cluster, because Pango ADS
-cannot parse SV interfaces or elaborate those two blocks. The DDR3 IP under
-`fpga/pango/ip/ddr3/` is regenerated for this device and validated through
-compile/synthesize/dev_map/pnr, but the 128-bit to 256-bit AXI bridge is still
-to be written. Details and the remaining steps: [docs/board_guide.md](docs/board_guide.md).
+The deployed weights are committed as `firmware/yolo/mt_detect_weights.h`.
+To regenerate them:
+
+```bash
+python3 tools/model/train_detector.py   # float model -> detector_float.npz
+python3 tools/model/pack_weights.py     # quantise + pack + integer golden
+```
+
+Topology: 32x32x4 input, 3x3 conv 4->8, 2x2 max pool, 3x3 conv 8->16, 2x2 max
+pool, 3x3 conv 16->16, 1x1 head 16->8 (4 box + 1 object + 1 class, padded to 8).
+The detector is single-class, single-anchor and anchor-free; the firmware
+decodes the head's centroid for the demo.
+
+## Design notes
+
+- **No data cache.**  The earlier cached data path silently returned stale
+  zeros for large `.rodata` reads; the YOLO golden comparison exposed it.  A
+  single uncached 32-bit path is smaller, coherent with the DMA, and fast enough
+  for this simulation.  `rtl/cache/ares_dmem.sv` also translates cached DDR
+  addresses to the uncached alias.
+- **No L2 cache.**  The L1I cache is enough for instruction locality; data and
+  accelerator traffic go straight to the scratchpad/DDR router.  This removes
+  cache-coherence and eviction corner cases from the accelerator path.
+- **One tensor.**  The miniTensor is attached to the single core complex via
+  the local MMIO window and the CV-X-IF shim; the DMA port shares the core's
+  memory router.
 
 ## Known limitations
 
-- No A extension (AMO/LR/SC); inter-core synchronization uses mailbox/barrier.
-- L2 is blocking (single outstanding) in this revision.
-- Board build uses smaller memories than the simulator (L1 4 KiB, L2 64 KiB,
-  scratchpad 64 KiB, on-chip 128 KiB) to fit the DRAM budget ADS infers;
-  the simulator keeps the full sizes.
-- Video capture/scaler is register-reserved on the board; the OSD/TMDS path is
-  verified in simulation only.
-- Fast-corner hold misses by 0.073 ns on 60 endpoints (27 MHz has 11 ns setup
-  margin, so this is cosmetic for now).
-- The YOLO detector golden mismatch (2026-10-18 commits) is not fixed; the YOLO
-  path is not part of the board build.
+- Simulation only: no pins, constraints, PLL/DDR PHY, HDMI or bitstream.
+- No A extension (AMO/LR/SC); single hart, no PLIC/mailbox/SMP.
+- Memory router handles one request at a time (blocking).
+- The image source is the packed 32x32 test set in firmware; a camera/video
+  front end is intentionally not included.
+- The detector is a small 32x32 model, not a full tiny-YOLO graph.
