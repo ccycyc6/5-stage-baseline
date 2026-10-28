@@ -27,19 +27,13 @@ module mt_cluster #(
 
   output logic         mt_irq
 );
-  core_v_xif #(
-    .X_NUM_RS(2),
-    .X_ID_WIDTH(4),
-    .X_RFR_WIDTH(32),
-    .X_RFW_WIDTH(32),
-    .X_NUM_HARTS(1),
-    .X_HARTID_WIDTH(1),
-    .X_MISA(26'd0),
-    .X_DUALREAD(0),
-    .X_DUALWRITE(0),
-    .X_ISSUE_REGISTER_SPLIT(0),
-    .X_MEM_WIDTH(32)
-  ) xif ();
+  import minitensor_pkg::*;
+
+  // Flat CV-X-IF bundle between the shim and the accelerator.  This used to be
+  // a core_v_xif interface; Pango ADS cannot parse interfaces, and the tensor
+  // only uses these four channels.
+  xif_req_t xif_req;
+  xif_rsp_t xif_rsp;
 
   logic        mem_rd_valid, mem_rd_ready;
   logic [31:0] mem_rd_addr;
@@ -59,7 +53,8 @@ module mt_cluster #(
     .status_rd(status_rd),
     .status(status),
     .result_data(result_data),
-    .xif(xif)
+    .xif_req(xif_req),
+    .xif_rsp(xif_rsp)
   );
 
   mini_tensor_top #(
@@ -72,7 +67,8 @@ module mt_cluster #(
   ) u_mt (
     .clk,
     .rst,
-    .xif(xif),
+    .xif_req(xif_req),
+    .xif_rsp(xif_rsp),
     .mem_rd_valid(mem_rd_valid),
     .mem_rd_ready(mem_rd_ready),
     .mem_rd_addr(mem_rd_addr),

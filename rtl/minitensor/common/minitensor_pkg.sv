@@ -1,6 +1,50 @@
 `timescale 1ns/1ps
 
 package minitensor_pkg;
+  // ---------------------------------------------------------------------------
+  // Flat CV-X-IF bundle.
+  //
+  // The upstream core_v_xif is a SystemVerilog interface, which Pango ADS
+  // cannot parse, and the miniTensor only ever uses the issue / register /
+  // commit / result channels.  Carrying the two directions as packed structs
+  // keeps the port list short and is understood by every toolchain.
+  // ---------------------------------------------------------------------------
+  typedef struct packed {
+    logic        issue_valid;
+    logic [31:0] issue_instr;
+    logic [3:0]  issue_id;
+    logic [0:0]  issue_hartid;
+
+    logic        register_valid;
+    logic [3:0]  register_id;
+    logic [0:0]  register_hartid;
+    logic [31:0] register_rs0;
+    logic [31:0] register_rs1;
+    logic [1:0]  register_rs_valid;
+
+    logic        commit_valid;
+    logic [3:0]  commit_id;
+    logic [0:0]  commit_hartid;
+    logic        commit_kill;
+
+    logic        result_ready;
+  } xif_req_t;
+
+  typedef struct packed {
+    logic        issue_ready;
+    logic        issue_accept;
+    logic [0:0]  issue_writeback;
+    logic [1:0]  issue_register_read;
+
+    logic        register_ready;
+
+    logic        result_valid;
+    logic [31:0] result_data;
+    logic [4:0]  result_rd;
+    logic [0:0]  result_we;
+    logic        result_err;
+  } xif_rsp_t;
+
   localparam logic [6:0] MT_CUSTOM0_OPCODE = 7'b0001011;
   localparam logic [6:0] MT_LOAD_FUNCT7 = 7'b0000011;
   localparam logic [2:0] MT_LOAD_FUNCT3 = 3'b000;

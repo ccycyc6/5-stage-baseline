@@ -1,4 +1,7 @@
 `timescale 1ns/1ps
+// Port types come from the package, so the import has to precede the module.
+import minitensor_pkg::*;
+
 // -----------------------------------------------------------------------------
 // mt_cvxif_shim -- MMIO -> CV-X-IF master adapter for miniTensor.
 //
@@ -47,8 +50,9 @@ module mt_cvxif_shim #(
     output logic [31:0] status,
     output logic [31:0] result_data,
 
-    // CV-X-IF master
-    core_v_xif xif
+    // CV-X-IF master (flat structs -- Pango ADS cannot parse an interface)
+    output xif_req_t xif_req,
+    input  xif_rsp_t xif_rsp
 );
 
   localparam logic [2:0] IDX_INSTR = 3'd0;
@@ -107,37 +111,24 @@ module mt_cvxif_shim #(
   // CV-X-IF master drive
   // ---------------------------------------------------------------------------
   always_comb begin
-    xif.issue_valid      = (state_q == S_ISSUE);
-    xif.issue_req        = '0;
-    xif.issue_req.instr  = instr_q;
-    xif.issue_req.mode   = 2'b00;
-    xif.issue_req.hartid = '0;
-    xif.issue_req.id     = id_q;
+    xif_req = '0;
 
-    xif.register_valid    = (state_q == S_REGISTER);
-    xif.register          = '0;
-    xif.register.hartid   = '0;
-    xif.register.id       = id_q;
-    xif.register.rs[0]    = rs1_q;
-    xif.register.rs[1]    = rs2_q;
-    xif.register.rs_valid = 2'b11;
+    xif_req.issue_valid   = (state_q == S_ISSUE);
+    xif_req.issue_instr   = instr_q;
+    xif_req.issue_id      = id_q;
+
+    xif_req.register_valid    = (state_q == S_REGISTER);
+    xif_req.register_id       = id_q;
+    xif_req.register_rs0      = rs1_q;
+    xif_req.register_rs1      = rs2_q;
+    xif_req.register_rs_valid = 2'b11;
 
     // Held, not pulsed -- see the header comment.
-    xif.commit_valid       = (state_q == S_COMMIT_WAIT) || (state_q == S_WAIT_RESULT);
-    xif.commit             = '0;
-    xif.commit.hartid      = '0;
-    xif.commit.id          = id_q;
-    xif.commit.commit_kill = 1'b0;
+    xif_req.commit_valid = (state_q == S_COMMIT_WAIT) || (state_q == S_WAIT_RESULT);
+    xif_req.commit_id    = id_q;
+    xif_req.commit_kill  = 1'b0;
 
-    xif.result_ready = (state_q == S_WAIT_RESULT);
-
-    // Unused CV-X-IF channels; mini_tensor_top ties the mem channel off.
-    xif.compressed_valid = 1'b0;
-    xif.compressed_req   = '0;
-    xif.mem_ready        = 1'b1;
-    xif.mem_resp         = '0;
-    xif.mem_result_valid = 1'b0;
-    xif.mem_result       = '0;
+    xif_req.result_ready = (state_q == S_WAIT_RESULT);
   end
 
   // ---------------------------------------------------------------------------
@@ -214,8 +205,8 @@ module mt_cvxif_shim #(
         end
 
         S_ISSUE: begin
-          if (xif.issue_valid && xif.issue_ready) begin
-            if (xif.issue_resp.accept) begin
+          if (xif_req.issue_valid && xif_rsp.issue_ready) begin
+            if (xif_rsp.issue_accept) begin
               wait_q  <= ISSUE_TO_REGISTER[7:0];
               state_q <= S_REG_WAIT;
             end else begin
@@ -233,7 +224,7 @@ module mt_cvxif_shim #(
         end
 
         S_REGISTER: begin
-          if (xif.register_valid && xif.register_ready) begin
+          if (xif_req.register_valid && xif_rsp.register_ready) begin
             wait_q  <= REGISTER_TO_COMMIT[7:0];
             state_q <= S_COMMIT_WAIT;
           end
@@ -245,9 +236,9 @@ module mt_cvxif_shim #(
         end
 
         S_WAIT_RESULT: begin
-          if (xif.result_valid && xif.result_ready) begin
-            err_q         <= err_q | xif.result.err;
-            result_data_q <= xif.result.data;
+          if (xif_rsp.result_valid && xif_req.result_ready) begin
+            err_q         <= err_q | xif_rsp.result_err;
+            result_data_q <= xif_rsp.result_data;
             // Only the final command of a drained queue raises DONE.
             if (fifo_count_q == CNT_W'(0)) done_q <= 1'b1;
             state_q       <= S_IDLE;

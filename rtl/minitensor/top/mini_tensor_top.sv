@@ -1,5 +1,8 @@
 `timescale 1ns/1ps
 
+// Port types come from the package, so the import has to precede the module.
+import minitensor_pkg::*;
+
 // Unified, single-clock miniTensor top.
 // One committed command at a time controls DMA load/store or a vector
 // operation whose operands and result reside in the Unified Buffer.
@@ -13,7 +16,8 @@ module mini_tensor_top #(
 ) (
   input  logic clk,
   input  logic rst,
-  core_v_xif xif,
+  input  xif_req_t xif_req,
+  output xif_rsp_t xif_rsp,
 
   output logic mem_rd_valid,
   input  logic mem_rd_ready,
@@ -107,11 +111,11 @@ module mini_tensor_top #(
   logic [DATA_WIDTH-1:0] ep_ub_wr_data;
   logic [DATA_WIDTH/8-1:0] ep_ub_wr_be;
 
-  wire issue_load = is_minitensor_load(xif.issue_req.instr);
-  wire issue_store = is_minitensor_store(xif.issue_req.instr);
-  wire issue_vector = is_vector_instruction(xif.issue_req.instr);
-  wire issue_tensor = is_tensor_gemm(xif.issue_req.instr);
-  wire issue_epilogue = is_tensor_epilogue(xif.issue_req.instr);
+  wire issue_load = is_minitensor_load(xif_req.issue_instr);
+  wire issue_store = is_minitensor_store(xif_req.issue_instr);
+  wire issue_vector = is_vector_instruction(xif_req.issue_instr);
+  wire issue_tensor = is_tensor_gemm(xif_req.issue_instr);
+  wire issue_epilogue = is_tensor_epilogue(xif_req.issue_instr);
   wire issue_supported = issue_load || issue_store || issue_vector || issue_tensor || issue_epilogue;
   wire count_valid = (rs2_q[15:8] != 8'h00);
   wire [8:0] ub_end = {1'b0, rs2_q[7:0]} + {1'b0, rs2_q[15:8]};
@@ -137,16 +141,16 @@ module mini_tensor_top #(
   wire operands_valid = (op_q == OP_VECTOR) ? vector_operands_valid :
       ((op_q == OP_TENSOR) ? tensor_operands_valid :
       ((op_q == OP_EPILOGUE) ? epilogue_operands_valid : dma_operands_valid));
-  wire issue_fire = xif.issue_valid && xif.issue_ready &&
-      xif.issue_resp.accept;
-  wire register_match = (xif.register.id == id_q) &&
-      (xif.register.hartid == hartid_q);
-  wire register_operands_valid = (xif.register.rs_valid == 2'b11);
-  wire register_fire = xif.register_valid && xif.register_ready;
-  wire commit_match = xif.commit_valid && (xif.commit.id == id_q) &&
-      (xif.commit.hartid == hartid_q);
-  wire commit_fire = commit_match && !xif.commit.commit_kill;
-  wire kill_fire = commit_match && xif.commit.commit_kill;
+  wire issue_fire = xif_req.issue_valid && xif_rsp.issue_ready &&
+      xif_rsp.issue_accept;
+  wire register_match = (xif_req.register_id == id_q) &&
+      (xif_req.register_hartid == hartid_q);
+  wire register_operands_valid = (xif_req.register_rs_valid == 2'b11);
+  wire register_fire = xif_req.register_valid && xif_rsp.register_ready;
+  wire commit_match = xif_req.commit_valid && (xif_req.commit_id == id_q) &&
+      (xif_req.commit_hartid == hartid_q);
+  wire commit_fire = commit_match && !xif_req.commit_kill;
+  wire kill_fire = commit_match && xif_req.commit_kill;
   wire vector_result_match = (vector_result_id == id_q) &&
       (vector_result_vd == 5'd3);
   wire vector_result_fire = vector_result_valid && vector_result_ready;
@@ -158,32 +162,21 @@ module mini_tensor_top #(
       $fatal(1, "mini_tensor_top currently requires X_ID_WIDTH=4");
   end
 
-//core's response to the XIF "issue" handshake
-  assign xif.issue_ready = (state_q == S_IDLE);
+// Everything the coprocessor drives back, in one place.  The struct is
+  // defaulted to zero first so every unused field is still defined.
   always_comb begin
-    xif.issue_resp = '0;
-    xif.issue_resp.accept = issue_supported;
-    xif.issue_resp.writeback[0] = issue_supported;
-    xif.issue_resp.register_read = issue_supported ? 2'b11 : 2'b00;
+    xif_rsp = '0;
+    xif_rsp.issue_ready         = (state_q == S_IDLE);
+    xif_rsp.issue_accept        = issue_supported;
+    xif_rsp.issue_writeback[0]  = issue_supported;
+    xif_rsp.issue_register_read = issue_supported ? 2'b11 : 2'b00;
+    xif_rsp.register_ready      = (state_q == S_WAIT_COMMIT) && !register_seen_q;
+    xif_rsp.result_valid        = (state_q == S_RESULT);
+    xif_rsp.result_data         = 32'h0000_0000;
+    xif_rsp.result_rd           = rd_q;
+    xif_rsp.result_we[0]        = 1'b1;
+    xif_rsp.result_err          = command_err_q;
   end
-  assign xif.register_ready = (state_q == S_WAIT_COMMIT) && !register_seen_q;
-
-//the write-back result that the accelerator sends back to the interface when the command finishes
-  assign xif.result_valid = (state_q == S_RESULT);
-  always_comb begin
-    xif.result = '0;
-    xif.result.id = id_q;
-    xif.result.hartid = hartid_q;
-    xif.result.data = 32'h0000_0000;
-    xif.result.rd = rd_q;
-    xif.result.we[0] = 1'b1;
-    xif.result.err = command_err_q;
-  end
-
-  assign xif.compressed_ready = 1'b1;
-  assign xif.compressed_resp = '0;
-  assign xif.mem_valid = 1'b0;
-  assign xif.mem_req = '0;
 
   assign dma_cmd_valid = (state_q == S_DMA_START);
   assign dma_cmd_write = (op_q == OP_STORE);
@@ -411,14 +404,14 @@ module mini_tensor_top #(
       case (state_q)
         S_IDLE: begin
           if (issue_fire) begin
-            id_q <= xif.issue_req.id;
-            hartid_q <= xif.issue_req.hartid;
-            rd_q <= xif.issue_req.instr[11:7];
+            id_q <= xif_req.issue_id;
+            hartid_q <= xif_req.issue_hartid;
+            rd_q <= xif_req.issue_instr[11:7];
             op_q <= issue_load ? OP_LOAD :
                 (issue_store ? OP_STORE :
                 (issue_tensor ? OP_TENSOR :
                 (issue_epilogue ? OP_EPILOGUE : OP_VECTOR)));
-            vec_funct3_q <= xif.issue_req.instr[14:12];
+            vec_funct3_q <= xif_req.issue_instr[14:12];
             register_seen_q <= 1'b0;
             committed_q <= 1'b0;
             command_err_q <= 1'b0;
@@ -427,16 +420,16 @@ module mini_tensor_top #(
         end
         S_WAIT_COMMIT: begin
           if (register_fire) begin
-            rs1_q <= xif.register.rs[0];
-            rs2_q <= xif.register.rs[1];
-            mem_addr_q <= xif.register.rs[0];
-            ub_base_q <= xif.register.rs[1][UB_ADDR_WIDTH-1:0];
-            tile_count_q <= xif.register.rs[1][15:8];
-            vec_src_a_q <= xif.register.rs[0][UB_ADDR_WIDTH-1:0];
-            vec_src_b_q <= xif.register.rs[0][8 +: UB_ADDR_WIDTH];
-            vec_dst_q <= xif.register.rs[1][UB_ADDR_WIDTH-1:0];
-            tensor_accumulate_q <= xif.register.rs[1][TENSOR_GEMM_ACCUMULATE_BIT];
-            ep_config_addr_q <= xif.register.rs[1][15:8];
+            rs1_q <= xif_req.register_rs0;
+            rs2_q <= xif_req.register_rs1;
+            mem_addr_q <= xif_req.register_rs0;
+            ub_base_q <= xif_req.register_rs1[UB_ADDR_WIDTH-1:0];
+            tile_count_q <= xif_req.register_rs1[15:8];
+            vec_src_a_q <= xif_req.register_rs0[UB_ADDR_WIDTH-1:0];
+            vec_src_b_q <= xif_req.register_rs0[8 +: UB_ADDR_WIDTH];
+            vec_dst_q <= xif_req.register_rs1[UB_ADDR_WIDTH-1:0];
+            tensor_accumulate_q <= xif_req.register_rs1[TENSOR_GEMM_ACCUMULATE_BIT];
+            ep_config_addr_q <= xif_req.register_rs1[15:8];
             register_seen_q <= 1'b1;
             if (!register_match || !register_operands_valid)
               command_err_q <= 1'b1;
@@ -506,7 +499,7 @@ module mini_tensor_top #(
             state_q <= S_RESULT;
         end
         S_RESULT: begin
-          if (xif.result_valid && xif.result_ready)
+          if (xif_rsp.result_valid && xif_req.result_ready)
             state_q <= S_IDLE;
         end
         default: state_q <= S_IDLE;
