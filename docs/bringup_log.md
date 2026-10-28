@@ -14,7 +14,7 @@
 | B1 | 最小位流（时钟/UART 活着） | ✅ PASS | 2026-10-28 | `284C6E38…` | 0/415 | +32.4 ns | 时钟/复位/UART/引脚/流程全部正常 |
 | B2 | CPU + ROM 打印 | ✅ PASS | 2026-10-28 | `A5581886…` | 8/415 | +17.7 ns | 板上串口 + LED 均符合预期 |
 | B3 | BRAM 读写自检 | ✅ PASS | 2026-10-28 | `7BE6DDC8…` | 16/415 | +18.6 ns | 板上 BRAM PASS 持续输出 |
-| B4 | 串口 loader | 🔶 位流就绪 | 2026-10-28 | `3DCF8BA1…` | 40/415 | +19.2 ns | 仿真 PASS，待上板 |
+| B4 | 串口 loader | ✅ PASS | 2026-10-28 | `3DCF8BA1…` | 40/415 | +19.2 ns | 上传 11192 B，loader 跳转后 C 应用跑起来 |
 | B5 | 张量上板 | ☐ | | | | | |
 | B6 | 并入视频 | ☐ | | | | | |
 | B7 | 摄像头 + OSD | ☐ | | | | | |
@@ -108,7 +108,7 @@ BRAM PASS mcycle=25b1a243
 
 ## B4 — 串口 loader
 
-- **日期**：2026-10-28   **提交**：`board(b4)`   **tag**：待上板通过后打 `board-b4`
+- **日期**：2026-10-28   **提交**：`db505b9`   **tag**：`board-b4`
 - **位流**：`build/pango/b4/generate_bitstream/board_cpu.sbit`（9,188,552 B）
 - **sha256**：`3DCF8BA1DB48D0F8E946DF4C17CD23157B7F6BF6B3ABA11CF0718D1030E2E8C8`
 - **资源**：LUT 4011/159800 (2.51%)，REG 3052，**DRM 40/415**（128 KiB 片内存储）
@@ -122,20 +122,21 @@ BRAM PASS mcycle=25b1a243
 之前所有固件只用 TX，所以从来没暴露。现在采样点改为 1.5 bit 起、每 bit 一次、
 第 9 次为停止位。修复后 `make yolo` 仍是 golden diff 0 bytes。
 
-- **上板现象**：⏳ 待烧写
+- **上板现象**（用户实测，2026-10-28 21:19）：
 
 ```text
 （上电）ARES-S1 loader v1 - send image
-
-（上传后）
+（上传）
+upload: 11192 bytes payload, checksum 0x000E9B55, 11204 bytes on the wire
 image ok, jump 0x80000000
 B4: hello from loaded firmware @0x80000000
-B4: mcycle=...
+B4: mcycle=1790373925
 ```
 
 - **上传命令**：`powershell -ExecutionPolicy Bypass -File tools\upload.ps1 -Port COM5 -File build\fw\b4_hello.bin`
 - **注意**：loader 上电后一直在等收数据，横幅只打印一次；按复位会重新打印。
-- **结论**：构建 + 仿真通过；上板待验证
+- **结论**：**PASS**。UART 收、写 128 KiB BRAM、fence.i、跳转、C 运行时（栈 + printf）
+  全部在真实板卡上验证。**从此改固件不用重跑 PnR**——这是后续 B5/B6/B7 能快速迭代的前提。
 
 ---
 

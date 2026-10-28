@@ -2,13 +2,20 @@
 .SYNOPSIS
   Upload a firmware image to the ARES-S1 UART boot loader.
 
+.DESCRIPTION
+  The serial port is exclusive on Windows: close any serial terminal
+  (sscom, PuTTY, MobaXterm, another PowerShell) that has the port open
+  before running this.  The script prints everything the loader and the
+  freshly started firmware say for a few seconds after the transfer.
+
 .EXAMPLE
-  powershell -ExecutionPolicy Bypass -File tools\upload.ps1 -Port COM5 -File build\fw\b4_hello.bin
+  powershell -ExecutionPolicy Bypass -File tools\upload.ps1 -Port COM9 -File build\fw\b4_hello.bin
 #>
 param(
     [string]$Port = "COM5",
     [Parameter(Mandatory = $true)][string]$File,
-    [int]$Baud = 115200
+    [int]$Baud = 115200,
+    [int]$ListenSeconds = 4
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,19 +39,38 @@ $bytes = $frame.ToArray()
 
 $sp = New-Object System.IO.Ports.SerialPort $Port, $Baud, "None", 8, "One"
 $sp.ReadTimeout = 500
-$sp.Open()
+try {
+    $sp.Open()
+}
+catch [System.UnauthorizedAccessException] {
+    throw ("$Port is already open. Close every serial terminal that holds it " +
+           "(sscom / PuTTY / MobaXterm / another PowerShell), then run again.")
+}
+catch {
+    throw ("cannot open $Port : " + $_.Exception.Message +
+           "  (wrong port number, or the USB-UART is unplugged)")
+}
+
 Start-Sleep -Milliseconds 100
 $sp.DiscardInBuffer()
 
 Write-Host ("upload: {0} bytes payload, checksum 0x{1:X8}, {2} bytes on the wire" -f $payload.Length, $sum, $bytes.Length)
 $sp.Write($bytes, 0, $bytes.Length)
+$sp.BaseStream.Flush()
 
-# Echo whatever the loader and the new firmware say for a couple of seconds.
-$deadline = (Get-Date).AddSeconds(2)
+# Transmission itself takes payload/11520 seconds; then the loader prints and
+# jumps, and the new firmware prints.  Listen long enough to catch all of it.
+$deadline = (Get-Date).AddSeconds($ListenSeconds)
 $text = ""
 while ((Get-Date) -lt $deadline) {
     try { $text += $sp.ReadExisting() } catch { }
     Start-Sleep -Milliseconds 50
 }
 $sp.Close()
-Write-Host $text
+
+if ($text.Length -eq 0) {
+    Write-Host "upload: no reply. Is the B4 bitstream running (banner printed at power-up)?"
+} else {
+    Write-Host "----- board says -----"
+    Write-Host $text
+}
