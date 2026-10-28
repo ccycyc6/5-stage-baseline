@@ -10,8 +10,8 @@
 
 | 关 | 内容 | 状态 | 日期 | 位流 sha256 | DRM | WNS | 结论 |
 |---|---|---|---|---|---|---|---|
-| B0 | 厂商位流钉死板子 | ☐ | | — | — | — | |
-| B1 | 最小位流（时钟/UART 活着） | ☐ | | | | | |
+| B0 | 厂商位流钉死板子 | ✅ PASS | 2026-10-28 | 厂商原版 | — | — | 板子/下载/串口正常 |
+| B1 | 最小位流（时钟/UART 活着） | ✅ PASS | 2026-10-28 | `284C6E38…` | 0/415 | +32.4 ns | 时钟/复位/UART/引脚/流程全部正常 |
 | B2 | CPU + ROM 打印 | ☐ | | | | | |
 | B3 | BRAM 读写自检 | ☐ | | | | | |
 | B4 | 串口 loader | ☐ | | | | | |
@@ -23,39 +23,28 @@
 
 ## B0 — 厂商位流（无代码）
 
-- **日期**：
-- **烧写 1**：`led_test.sbit` → 现象：
-- **烧写 2**：`uart_top.sbit` → 串口原文：
-
-```text
-<逐字粘贴>
-```
-
-- **结论**：板子/下载/串口 正常 / 异常（写明）
-- **备注**：DONE 灯状态、COM 口、波特率
+- **日期**：2026-10-28
+- **烧写**：`led_test.sbit`（厂商 4_1_led_test）→ **LED 正常**
+- **烧写**：`uart_top.sbit`（厂商 2_8_uart_test）→ 串口正常
+- **结论**：**PASS**。板子、供电、JTAG 下载链、SCBV、USB-UART 全部正常。
+  之前"下载后没反应"**不是**板子/下载/电源问题。
+- **意义**：把嫌疑范围压缩到"我们的设计"这一侧。
 
 ---
 
 ## B1 — 最小位流（时钟 / UART）
 
-- **日期**：2026-10-28（构建）   **提交**：`board(b1)`   **tag**：待上板通过后打 `board-b1`
+- **日期**：2026-10-28   **提交**：`75d47a3`   **tag**：`board-b1`
 - **位流**：`build/pango/smoke/generate_bitstream/board_smoke.sbit`（9,188,552 B）
 - **sha256**：`284C6E38E931859BF7D198E3E947B56C792E267AB0FDFBFD0683EA9EBB952A14`
-- **上板前仿真门**：`sim/rtl/tb_board_smoke.sv`（Verilator 5.020，WSL）→ `TB PASS: two full messages decoded at 115200`
-  - 该仿真在第一次构建后抓到一个真实 bug：`MSG[idx*8 +: 8]` 把字节顺序取反了（收到 `0A 0D 4B 4F … 41`），已改为从高位往下取；若不做这一步，板上会看到一堆乱码而不是 "ARES-S1 smoke OK"
 - **资源**：CLMA 47/30075，LUT 128/159800，寄存器 103/319600，**DRM 0/415**
-- **时序**：setup slack **+32.4 ns**（27 MHz 约束），0 failing；hold 无违例
-- **完整流程耗时**：1m48s（compile 4s / synth 11s / dev_map ~15s / pnr ~60s / bitgen 21s）
-- **警告**：`Public-4008`（`free_cnt[25]`、`gap_cnt[24]` 悬空，故意不接，无害）；
-  `Timing-4086/4087`（led/uart_tx 未加 output delay，本阶段不需要）
-- **上板现象**：⏳ 待烧写
-
-```text
-（待填：串口应每 0.5 s 出现一行 "ARES-S1 smoke OK"）
-```
-
-- **LED**：待观察 led[0] 闪（约 1.6 s 周期）、led[1] 常亮（复位已释放）
-- **结论**：构建通过；上板待验证
+- **时序**：setup slack **+32.4 ns**（27 MHz），0 failing
+- **上板前仿真门**：`sim/rtl/tb_board_smoke.sv`（Verilator 5.020）→ `TB PASS: two full messages decoded at 115200`
+  - 抓到真实 bug：`MSG[idx*8 +: 8]` 字节序取反（收到 `0A 0D 4B 4F … 41`），已改为从高位取。
+- **上板现象**：串口每 0.5 s 输出 `ARES-S1 smoke OK`；LED 心跳（用户确认）
+- **结论**：**PASS**。27 MHz 进 fabric、POR+按键复位、UART 分频/引脚、PDS 流程、约束全部正常。
+  PDS 自动插入全局时钟缓冲（place 日志 `clkbufg_0/gopclkbufg`），无需手工 BUFG。
+- **意义**：SoC 侧的问题从此只可能在 RTL/综合/BRAM/启动，而不在板级。
 
 ---
 
@@ -67,8 +56,7 @@
 - **现象**：
 
 ```text
-B2 OK
-B2 OK mcycle=00001234
+（待填：B2 OK / mcycle 递增）
 ```
 
 - **结论**：
