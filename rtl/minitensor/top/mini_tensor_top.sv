@@ -433,7 +433,10 @@ module mini_tensor_top #(
             ub_base_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
             tile_count_q <= reg_rs1[15:8];
             vec_src_a_q <= reg_rs0[UB_ADDR_WIDTH-1:0];
-            vec_src_b_q <= reg_rs0[8 +: UB_ADDR_WIDTH];
+            // Constant-range form on purpose: an indexed slice whose width is
+            // a parameter makes ADS fail with an internal error (Flow-0189).
+            // Keep slice syntax out of the comments too -- ADS chokes on it.
+            vec_src_b_q <= reg_rs0[2*UB_ADDR_WIDTH-1 : UB_ADDR_WIDTH];
             vec_dst_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
             tensor_accumulate_q <= reg_rs1[TENSOR_GEMM_ACCUMULATE_BIT];
             ep_config_addr_q <= reg_rs1[15:8];
