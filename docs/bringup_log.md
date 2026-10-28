@@ -13,7 +13,7 @@
 | B0 | 厂商位流钉死板子 | ✅ PASS | 2026-10-28 | 厂商原版 | — | — | 板子/下载/串口正常 |
 | B1 | 最小位流（时钟/UART 活着） | ✅ PASS | 2026-10-28 | `284C6E38…` | 0/415 | +32.4 ns | 时钟/复位/UART/引脚/流程全部正常 |
 | B2 | CPU + ROM 打印 | ✅ PASS | 2026-10-28 | `A5581886…` | 8/415 | +17.7 ns | 板上串口 + LED 均符合预期 |
-| B3 | BRAM 读写自检 | ☐ | | | | | |
+| B3 | BRAM 读写自检 | 🔶 位流就绪 | 2026-10-28 | `7BE6DDC8…` | 16/415 | +18.6 ns | 仿真 PASS，待上板 |
 | B4 | 串口 loader | ☐ | | | | | |
 | B5 | 张量上板 | ☐ | | | | | |
 | B6 | 并入视频 | ☐ | | | | | |
@@ -78,14 +78,25 @@
 
 ## B3 — BRAM 自检
 
-- **日期**：   **提交**：   **tag**：`board-b3`
-- **现象**：
+- **日期**：2026-10-28   **提交**：`b1daa0b`   **tag**：待上板通过后打 `board-b3`
+- **位流**：`build/pango/b3/generate_bitstream/board_cpu.sbit`（9,188,552 B）
+- **sha256**：`7BE6DDC89B96CD5C6BF4706C0F9ADDDA065AAE8E8F37A554A5B7C6FD4A61B380`
+- **资源**：LUT 3990/159800 (2.50%)，REG 3010/319600，**DRM 16/415**
+- **时序**：setup WNS **+18.633 ns**，0 failing；hold slow +0.256 ns；
+  估计最高频率 **54.3 MHz**（27 MHz 约束）
+- **全流程耗时**：4m47s
+- **上板前仿真门**：`sim/rtl/tb_b3.sv` → `TB PASS: BRAM read-back verified by the CPU`
+- **测试内容**：2048 字写入 0x8000_0000 后读回比对；再测字节写使能（sb）和
+  半字写使能（sh）；失败会打印 `addr/got/exp`
+- **上板现象**：⏳ 待烧写
 
 ```text
-BRAM PASS (4096 bytes)
+（待填：串口应每 ~1 s 出现一行 "BRAM PASS mcycle=XXXXXXXX"）
 ```
 
-- **结论**：
+- **注意**：`rtl/board/boot_rom.v` 现在装的是 B3 固件。要重建 B2 位流，
+  先 `python tools/mkrom.py build/fw/b2_hello.bin rtl/board/boot_rom.v`。
+- **结论**：构建 + 仿真通过；上板待验证
 
 ---
 
