@@ -17,7 +17,7 @@
 | B4 | 串口 loader | ✅ PASS | 2026-10-28 | `3DCF8BA1…` | 40/415 | +19.2 ns | 上传 11192 B，loader 跳转后 C 应用跑起来 |
 | B5 | 张量上板 | ✅ PASS | 2026-10-29 | `5D52CA26…` | 40/415 | +17.1 ns | 板上 golden diff 0 bytes，7468368 cycles |
 | B6-pre | 摄像头→DDR3→HDMI 独立位流 | ✅ PASS | 2026-10-28 | `F5D0EED6…` | 9/415 | 0 failing | 画面干净 |
-| B6 | 并入视频（+SoC） | ☐ | | | | | |
+| B6 | 并入视频（+SoC） | 🔶 位流就绪 | 2026-10-29 | `B0144D71…` | 49/415 | 0 failing | LUT 15.7%，待上板 |
 | B7 | 摄像头 + OSD | ☐ | | | | | |
 
 ---
@@ -204,6 +204,21 @@ SYS P=1 D=1 H=1 C=1
 ```
 
 - **结论**：
+
+---
+
+## B6 — 视频 + SoC 合并
+
+- **日期**：2026-10-29   **提交**：`1997430`   **tag**：待上板通过后打 `board-b6`
+- **位流**：`build/pango/b6/generate_bitstream/video_fb_top.sbit`（9,188,552 B）
+- **sha256**：`B0144D71E196D34D703989ED1C4F257720871C2DDE77CCD9E79F9B45ADFB20EA`
+- **资源**：LUT 25,072/159,800 (15.69%)，REG 14,114，**DRM 49/415**
+- **时序**：0 failing；sys_clk WNS +16.5 ns；DDR3 域 WNS +0.115 ns（偏紧但 MET）
+- **耗时**：36m10s（seed 5）
+- **做法**：SoC 放在 `video_fb_top` 内部（`ifdef BOARD_SOC`），视频层级不变，
+  S2 的三份约束文件原样使用
+- **验证**：HDMI 出画面 + 上传 `yolo_board.bin` 后串口出 `golden diff 0 bytes`
+- **现象**：⏳ 待烧写
 
 ---
 
