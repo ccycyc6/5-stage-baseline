@@ -587,8 +587,71 @@ module video_fb_top #(
         .cap_line_cnt   (cap_line_s2),
         .cap_pixel_cnt  (cap_pixel_s2),
         .led            (led),
-        .uart_tx        (uart_tx)
+        .uart_tx        (v_status_uart)
     );
+
+    wire v_status_uart;
+
+`ifdef BOARD_SOC
+    // ---------------------------------------------------------------- SoC
+    // The SoC shares clk_27m and owns the UART; the video status keeps the
+    // LEDs.  The DDR3 IP stays where it is (inside this module) so the proven
+    // constraint files with their absolute I_ips_ddr_top paths keep working.
+    reg [1:0]  soc_rst_sync;
+    reg [15:0] soc_por_cnt;
+    reg        soc_por_done;
+
+    always @(posedge clk_27m or negedge rst_n) begin
+        if (!rst_n) begin
+            soc_rst_sync <= 2'b00;
+            soc_por_cnt  <= 16'd0;
+            soc_por_done <= 1'b0;
+        end else begin
+            soc_rst_sync <= {soc_rst_sync[0], 1'b1};
+            if (!soc_por_done) begin
+                if (soc_por_cnt == 16'hFFFF) soc_por_done <= 1'b1;
+                else                         soc_por_cnt  <= soc_por_cnt + 16'd1;
+            end
+        end
+    end
+
+    wire soc_rst = ~(soc_rst_sync[1] & soc_por_done);
+
+    wire        soc_uart_tx;
+    wire [31:0] soc_dbg_pc;
+    wire        soc_dbg_commit;
+    wire        soc_dbg_halt;
+
+    ares_soc #(
+        .RESET_PC      (32'h0000_0000),
+        .L1_BYTES      (2048),
+        .SCRATCH_WORDS (4096),
+        .ROM_WORDS     (4096),
+        .DDR_WORDS     (8192)
+    ) u_soc (
+        .clk             (clk_27m),
+        .rst             (soc_rst),
+        .uart_rx         (1'b1),
+        .uart_tx         (soc_uart_tx),
+        .gpio_in         (32'd0),
+        .gpio_out        (),
+        .gpio_dir        (),
+        .mt_irq          (),
+        .dbg_halt        (soc_dbg_halt),
+        .dbg_pc          (soc_dbg_pc),
+        .dbg_commit      (soc_dbg_commit),
+        .dbg_pc_f        (),
+        .dbg_ifid_valid  (),
+        .dbg_idex_valid  (),
+        .dbg_exmem_valid (),
+        .dbg_memwb_valid (),
+        .dbg_if_pending  ()
+    );
+
+    assign uart_tx = soc_uart_tx;
+`else
+    assign uart_tx = v_status_uart;
+`endif
 
     /* verilator lint_off UNUSEDSIGNAL */
     wire _unused_ok = &{1'b0,
