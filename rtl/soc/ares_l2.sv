@@ -46,6 +46,18 @@ module ares_l2 #(
   import ares_pkg::*;
 
   logic [127:0] sp_mem [0:SCRATCH_WORDS-1];
+
+`ifdef ARES_BOOT_ROM
+  // FPGA build: the boot ROM is a generated combinational table.  It has no
+  // initial contents at all, so it cannot depend on how a tool treats memory
+  // initialisation or $readmemh paths.
+  wire [127:0] rom_line;
+
+  boot_rom u_boot_rom (
+    .idx  (req_addr[15:4]),
+    .data (rom_line)
+  );
+`else
   logic [31:0]  rom_mem [0:ROM_WORDS-1];
 
   initial begin
@@ -53,6 +65,8 @@ module ares_l2 #(
     rom_mem[0] = 32'h8000_00b7;
     rom_mem[1] = 32'h0000_8067;
   end
+`endif
+
 
   typedef enum logic [2:0] {
     S_IDLE, S_RESP, S_MMIO_REQ, S_MMIO_WAIT, S_DDR_REQ, S_DDR_WAIT
@@ -111,10 +125,14 @@ module ares_l2 #(
             wstrb_q <= req_wstrb;
 
             if (req_addr < ROM_SIZE) begin
+`ifdef ARES_BOOT_ROM
+              rsp_data_q <= rom_line;
+`else
               rsp_data_q <= {rom_mem[req_addr[15:2] + 3],
                              rom_mem[req_addr[15:2] + 2],
                              rom_mem[req_addr[15:2] + 1],
                              rom_mem[req_addr[15:2]]};
+`endif
               state_q <= S_RESP;
             end else if ((req_addr >= SCRATCH_BASE) &&
                          (req_addr < (SCRATCH_BASE + SCRATCH_SIZE))) begin

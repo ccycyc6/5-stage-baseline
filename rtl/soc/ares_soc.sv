@@ -81,12 +81,25 @@ module ares_soc #(
     .mmio_req_wdata, .mmio_req_wstrb, .mmio_rsp_valid, .mmio_rsp_ready, .mmio_rsp_rdata
   );
 
+`ifdef ARES_NO_DDR
+  // Bring-up builds that do not use external memory answer DDR accesses with
+  // zeros after one cycle, keeping the L2 decode identical.  Spelled out in
+  // full because the ADS preparer cannot expand the first implicit .port of a
+  // list that starts right after an `endif.
+  ddr_stub u_ddr (
+    .clk, .rst,
+    .req_valid(ddr_req_valid), .req_ready(ddr_req_ready), .req_write(ddr_req_write),
+    .req_addr(ddr_req_addr), .req_wdata(ddr_req_wdata), .req_wstrb(ddr_req_wstrb),
+    .rsp_valid(ddr_rsp_valid), .rsp_ready(ddr_rsp_ready), .rsp_rdata(ddr_rsp_rdata)
+  );
+`else
   ddr3_model #(.DDR_FILE(DDR_FILE)) u_ddr (
     .clk, .rst,
     .req_valid(ddr_req_valid), .req_ready(ddr_req_ready), .req_write(ddr_req_write),
     .req_addr(ddr_req_addr), .req_wdata(ddr_req_wdata), .req_wstrb(ddr_req_wstrb),
     .rsp_valid(ddr_rsp_valid), .rsp_ready(ddr_rsp_ready), .rsp_rdata(ddr_rsp_rdata)
   );
+`endif
 
   ares_mmio_bus u_mmio (
     .clk, .rst,

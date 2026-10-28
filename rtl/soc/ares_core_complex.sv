@@ -115,6 +115,22 @@ module ares_core_complex #(
   logic        mt_status_rd;
   logic [31:0] mt_status, mt_result;
 
+`ifdef ARES_NO_MT
+  // Bring-up builds replace the accelerator with a port-compatible stub.
+  // The two instantiations are spelled out in full on purpose: the ADS
+  // port preparer only expands an implicit .port when the previous token is
+  // '(' or ',', which is not true after an `endif.
+  mt_cluster_stub u_mt (
+    .clk, .rst,
+    .reg_wr_en(mt_reg_wr_en), .reg_wr_idx(mt_reg_wr_idx), .reg_wr_data(mt_reg_wr_data),
+    .status_rd(mt_status_rd), .status(mt_status), .result_data(mt_result),
+    .l2_req_valid(mt_l2_req_valid), .l2_req_ready(mt_l2_req_ready),
+    .l2_req_write(mt_l2_req_write), .l2_req_addr(mt_l2_req_addr),
+    .l2_req_wdata(mt_l2_req_wdata), .l2_req_wstrb(mt_l2_req_wstrb),
+    .l2_rsp_valid(mt_l2_rsp_valid), .l2_rsp_ready(mt_l2_rsp_ready), .l2_rsp_rdata(mt_l2_rsp_rdata),
+    .mt_irq(mt_irq)
+  );
+`else
   mt_cluster u_mt (
     .clk, .rst,
     .reg_wr_en(mt_reg_wr_en), .reg_wr_idx(mt_reg_wr_idx), .reg_wr_data(mt_reg_wr_data),
@@ -125,6 +141,7 @@ module ares_core_complex #(
     .l2_rsp_valid(mt_l2_rsp_valid), .l2_rsp_ready(mt_l2_rsp_ready), .l2_rsp_rdata(mt_l2_rsp_rdata),
     .mt_irq(mt_irq)
   );
+`endif
 
   // --------------------------------------------------- bypass / local MMIO
   typedef enum logic [2:0] {

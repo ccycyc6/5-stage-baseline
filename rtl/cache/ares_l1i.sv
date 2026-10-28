@@ -127,6 +127,24 @@ module ares_l1i #(
     end else i_stuck_cnt <= 0;
   end
 
+  // Tag/valid/LRU arrays are initialised once instead of on every reset:
+  // ADS rejects a variable driven by both blocking and non-blocking
+  // assignments, while Verilator rejects non-blocking assignment to an array
+  // inside a for loop, so no reset loop is portable.  A warm reset therefore
+  // leaves stale lines marked valid; firmware that rewrites memory must issue
+  // fence.i (the loader does), which sweeps every valid bit.
+  integer iw, is;
+  initial begin
+    for (iw = 0; iw < WAYS; iw = iw + 1) begin
+      rd_line_q[iw] = '0;
+      for (is = 0; is < SETS; is = is + 1) begin
+        tag_q[iw][is]   = '0;
+        valid_q[iw][is] = 1'b0;
+      end
+    end
+    for (is = 0; is < SETS; is = is + 1) lru_q[is] = 1'b0;
+  end
+
   always_ff @(posedge clk) begin
     if (rst) begin
       state_q <= ST_IDLE;
@@ -139,23 +157,15 @@ module ares_l1i #(
       inv_active_q <= 1'b0;
       inv_done_q <= 1'b0;
       line_base_q <= 32'd0;
-      for (int unsigned w = 0; w < WAYS; w++) begin
-        rd_line_q[w] <= '0;
-        for (int unsigned s = 0; s < SETS; s++) begin
-          tag_q[w][s] = '0;
-          valid_q[w][s] = 1'b0;
-          data_q[w][s] = '0;
-        end
-      end
-      for (int unsigned s = 0; s < SETS; s++) lru_q[s] = 1'b0;
     end else begin
       rsp_valid_q <= 1'b0;
 
       // Invalidate sweep has priority over normal requests.
       if (inv_active_q) begin
-        for (int unsigned w = 0; w < WAYS; w++) begin
-          valid_q[w][inv_idx_q] <= 1'b0;
-        end
+        // WAYS is fixed at 2; unrolled because Verilator rejects a
+        // non-blocking assignment to an array inside a for loop.
+        valid_q[0][inv_idx_q] <= 1'b0;
+        valid_q[1][inv_idx_q] <= 1'b0;
         if (inv_idx_q == '0) begin
           inv_active_q <= 1'b0;
           inv_done_q <= 1'b1;
@@ -174,9 +184,9 @@ module ares_l1i #(
             req_set_q  <= cpu_req_addr[OFFSET_BITS +: INDEX_BITS];
             req_off_q  <= cpu_req_addr[OFFSET_BITS-1:0];
             line_base_q <= line_base(cpu_req_addr);
-            for (int unsigned w = 0; w < WAYS; w++) begin
-              rd_line_q[w] <= data_q[w][cpu_req_addr[OFFSET_BITS +: INDEX_BITS]];
-            end
+            // Unrolled for the same reason as the invalidate sweep above.
+            rd_line_q[0] <= data_q[0][cpu_req_addr[OFFSET_BITS +: INDEX_BITS]];
+            rd_line_q[1] <= data_q[1][cpu_req_addr[OFFSET_BITS +: INDEX_BITS]];
             state_q <= ST_LOOKUP;
           end else if (invalidate && !inv_active_q) begin
             inv_idx_q <= INDEX_BITS'(SETS - 1);

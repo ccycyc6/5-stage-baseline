@@ -45,17 +45,26 @@ module ares_bpu (
     end
   end
 
+  // Tables are initialised once, not on every reset.  Two reasons:
+  //  - ADS rejects a variable driven by both blocking and non-blocking
+  //    assignments in one always block, and Verilator rejects non-blocking
+  //    assignment to an array inside a for loop, so a reset loop cannot be
+  //    written portably;
+  //  - the tables are only a performance hint (the core always verifies a
+  //    prediction), so they do not need to be cleared by a warm reset.
   integer i;
+  initial begin
+    for (i = 0; i < 256; i = i + 1) bht[i] = 2'b01;
+    for (i = 0; i < 64; i = i + 1) begin
+      btb_valid[i]  = 1'b0;
+      btb_tag[i]    = 24'd0;
+      btb_target[i] = 32'd0;
+      btb_jal[i]    = 1'b0;
+    end
+  end
+
   always_ff @(posedge clk) begin
-    if (rst) begin
-      for (i = 0; i < 256; i = i + 1) bht[i] = 2'b01;
-      for (i = 0; i < 64; i = i + 1) begin
-        btb_valid[i]  = 1'b0;
-        btb_tag[i]    = 24'd0;
-        btb_target[i] = 32'd0;
-        btb_jal[i]    = 1'b0;
-      end
-    end else if (update_en) begin
+    if (!rst && update_en) begin
       if (update_is_cond) begin
         bht[upd_bht_idx] <= bht_new;
       end
