@@ -110,9 +110,9 @@ module mt_cvxif_shim #(
   // ---------------------------------------------------------------------------
   // CV-X-IF master drive
   // ---------------------------------------------------------------------------
+  // Every field is assigned below, so there is no '0 default: ADS trips over
+  // a whole-struct default assignment here.
   always_comb begin
-    xif_req = '0;
-
     xif_req.issue_valid   = (state_q == S_ISSUE);
     xif_req.issue_instr   = instr_q;
     xif_req.issue_id      = id_q;

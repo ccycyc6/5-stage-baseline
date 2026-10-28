@@ -111,7 +111,11 @@ module mini_tensor_top #(
   logic [DATA_WIDTH-1:0] ep_ub_wr_data;
   logic [DATA_WIDTH/8-1:0] ep_ub_wr_be;
 
-  wire issue_load = is_minitensor_load(xif_req.issue_instr);
+  // A struct member cannot be part-selected in ADS (Flow-0189), so the
+  // instruction field is copied to a plain vector first.
+  wire [31:0] issue_instr = xif_req.issue_instr;
+
+  wire issue_load = is_minitensor_load(issue_instr);
   wire issue_store = is_minitensor_store(xif_req.issue_instr);
   wire issue_vector = is_vector_instruction(xif_req.issue_instr);
   wire issue_tensor = is_tensor_gemm(xif_req.issue_instr);
@@ -165,16 +169,15 @@ module mini_tensor_top #(
 // Everything the coprocessor drives back, in one place.  The struct is
   // defaulted to zero first so every unused field is still defined.
   always_comb begin
-    xif_rsp = '0;
     xif_rsp.issue_ready         = (state_q == S_IDLE);
     xif_rsp.issue_accept        = issue_supported;
-    xif_rsp.issue_writeback[0]  = issue_supported;
+    xif_rsp.issue_writeback     = issue_supported;
     xif_rsp.issue_register_read = issue_supported ? 2'b11 : 2'b00;
     xif_rsp.register_ready      = (state_q == S_WAIT_COMMIT) && !register_seen_q;
     xif_rsp.result_valid        = (state_q == S_RESULT);
     xif_rsp.result_data         = 32'h0000_0000;
     xif_rsp.result_rd           = rd_q;
-    xif_rsp.result_we[0]        = 1'b1;
+    xif_rsp.result_we           = 1'b1;
     xif_rsp.result_err          = command_err_q;
   end
 
@@ -406,12 +409,12 @@ module mini_tensor_top #(
           if (issue_fire) begin
             id_q <= xif_req.issue_id;
             hartid_q <= xif_req.issue_hartid;
-            rd_q <= xif_req.issue_instr[11:7];
+            rd_q <= issue_instr[11:7];
             op_q <= issue_load ? OP_LOAD :
                 (issue_store ? OP_STORE :
                 (issue_tensor ? OP_TENSOR :
                 (issue_epilogue ? OP_EPILOGUE : OP_VECTOR)));
-            vec_funct3_q <= xif_req.issue_instr[14:12];
+            vec_funct3_q <= issue_instr[14:12];
             register_seen_q <= 1'b0;
             committed_q <= 1'b0;
             command_err_q <= 1'b0;

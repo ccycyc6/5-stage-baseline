@@ -110,11 +110,11 @@ NOTE_DIR = ROOT / "build" / "pango" / "syn"
 NOTES = NOTE_DIR / "PORT_NOTES.md"
 
 # Files that are deliberately not part of the FPGA build (see flow_compile.tcl).
-EXCLUDED_DIRS = ("rtl/minitensor/",)
+# The miniTensor is part of the FPGA build from B5 on: its CV-X-IF interface
+# has been replaced by packed structs, so only the (now unused) interface file
+# is skipped.
+EXCLUDED_DIRS = ()
 EXCLUDED_FILES = (
-    "soc/mt/mt_cluster.sv",
-    "soc/mt/mt_cvxif_shim.sv",
-    "soc/mt/mt_dma_l2_bridge.sv",
     "minitensor/interface/core_v_xif.sv",
 )
 

@@ -24,7 +24,8 @@ module vpu_vector_regfile #(
   input logic [VLEN/8-1:0] wr_be
 );
   logic [VLEN-1:0] regs [0:NUM_REGS-1];
-  localparam logic [ADDR_WIDTH:0] NUM_REGS_LIMIT = (ADDR_WIDTH + 1)'(NUM_REGS);
+  // NUM_REGS always fits in ADDR_WIDTH+1 bits (ADDR_WIDTH = $clog2(NUM_REGS)).
+  localparam logic [ADDR_WIDTH:0] NUM_REGS_LIMIT = NUM_REGS;
   wire rd0_addr_valid = {1'b0, rd0_addr} < NUM_REGS_LIMIT;
   wire rd1_addr_valid = {1'b0, rd1_addr} < NUM_REGS_LIMIT;
   wire wr_addr_valid = {1'b0, wr_addr} < NUM_REGS_LIMIT;

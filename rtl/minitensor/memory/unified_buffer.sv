@@ -19,7 +19,10 @@ module unified_buffer #(
   output logic [DATA_WIDTH-1:0] rd_data
 );
   localparam int unsigned BYTE_COUNT = DATA_WIDTH / 8;
-  localparam logic [ADDR_WIDTH:0] DEPTH_LIMIT = (ADDR_WIDTH + 1)'(DEPTH);
+  // DEPTH always fits in ADDR_WIDTH+1 bits (ADDR_WIDTH = $clog2(DEPTH)), so a
+  // plain assignment is the same value and stays inside the ADS subset: the
+  // preparer only rewrites sized casts whose width is a literal number.
+  localparam logic [ADDR_WIDTH:0] DEPTH_LIMIT = DEPTH;
 
   logic [DATA_WIDTH-1:0] mem [0:DEPTH-1];
   wire wr_addr_valid = {1'b0, wr_addr} < DEPTH_LIMIT;

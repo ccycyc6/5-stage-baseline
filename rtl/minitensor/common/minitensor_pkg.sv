@@ -13,27 +13,29 @@ package minitensor_pkg;
     logic        issue_valid;
     logic [31:0] issue_instr;
     logic [3:0]  issue_id;
-    logic [0:0]  issue_hartid;
+    logic        issue_hartid;
 
     logic        register_valid;
     logic [3:0]  register_id;
-    logic [0:0]  register_hartid;
+    logic        register_hartid;
     logic [31:0] register_rs0;
     logic [31:0] register_rs1;
     logic [1:0]  register_rs_valid;
 
     logic        commit_valid;
     logic [3:0]  commit_id;
-    logic [0:0]  commit_hartid;
+    logic        commit_hartid;
     logic        commit_kill;
 
     logic        result_ready;
   } xif_req_t;
 
   typedef struct packed {
+    // 1-bit fields are plain logic, not logic[0:0]: ADS rejects a part-select
+    // of a struct member (Flow-0189), and xif_rsp.x[0] is exactly that.
     logic        issue_ready;
     logic        issue_accept;
-    logic [0:0]  issue_writeback;
+    logic        issue_writeback;
     logic [1:0]  issue_register_read;
 
     logic        register_ready;
@@ -41,7 +43,7 @@ package minitensor_pkg;
     logic        result_valid;
     logic [31:0] result_data;
     logic [4:0]  result_rd;
-    logic [0:0]  result_we;
+    logic        result_we;
     logic        result_err;
   } xif_rsp_t;
 
