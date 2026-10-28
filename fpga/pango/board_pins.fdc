@@ -36,6 +36,14 @@ define_attribute {p:rst_n} {PAP_IO_STANDARD} {LVCMOS33}
 define_attribute {p:rst_n} {PAP_IO_NONE} {TRUE}
 
 # ---------------------------------------------------------------------- UART
+# uart_rx B24: from 2_8_uart_test.fdc (the vendor UART demo).  First used by
+# the B4 loader, so B4 is also the first test of this pin.
+define_attribute {p:uart_rx} {PAP_IO_DIRECTION} {INPUT}
+define_attribute {p:uart_rx} {PAP_IO_LOC} {B24}
+define_attribute {p:uart_rx} {PAP_IO_VCCIO} {3.3}
+define_attribute {p:uart_rx} {PAP_IO_STANDARD} {LVCMOS33}
+define_attribute {p:uart_rx} {PAP_IO_NONE} {TRUE}
+
 define_attribute {p:uart_tx} {PAP_IO_DIRECTION} {OUTPUT}
 define_attribute {p:uart_tx} {PAP_IO_LOC} {C24}
 define_attribute {p:uart_tx} {PAP_IO_VCCIO} {3.3}

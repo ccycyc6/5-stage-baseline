@@ -17,10 +17,12 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 module board_cpu #(
-    parameter integer DDR_WORDS = 2048       // 128-bit lines = 32 KiB
+    parameter integer DDR_WORDS = 8192       // 128-bit lines = 128 KiB
+                                             // matches __stack_top = 0x8002_0000
 ) (
     input  wire       clk_27m,      // D18
     input  wire       rst_n,        // C22
+    input  wire       uart_rx,      // B24
     output wire       uart_tx,      // C24
     output wire [7:0] led
 );
@@ -67,7 +69,7 @@ module board_cpu #(
     ) u_soc (
         .clk             (clk_27m),
         .rst             (rst),
-        .uart_rx         (1'b1),
+        .uart_rx         (uart_rx),
         .uart_tx         (soc_uart_tx),
         .gpio_in         (32'd0),
         .gpio_out        (),

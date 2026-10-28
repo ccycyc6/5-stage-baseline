@@ -31,11 +31,17 @@ module ares_uart (
   // RX
   logic        rx_sync0_q, rx_sync1_q, rx_prev_q;
   logic        rx_busy_q;
+  logic        rx_first_q;   // next sample is the first data bit (1.5 bit times)
   logic [3:0]  rx_bit_q;
   logic [15:0] rx_div_q;
   logic [7:0]  rx_shift_q;
   logic [7:0]  rx_data_q;
   logic        rx_valid_q;
+
+  // RX sample period: 1.5 bit times for the first sample (middle of d0),
+  // then one bit time per sample.
+  wire [15:0] rx_baud   = (baud_q == 16'd0) ? 16'd1 : baud_q;
+  wire [15:0] rx_period = rx_first_q ? (rx_baud + (rx_baud >> 1)) : rx_baud;
 
   assign uart_tx = tx_busy_q ? tx_shift_q[0] : 1'b1;
   assign uart_irq = (rx_valid_q && ctrl_q[1]) || (tx_done_q && ctrl_q[2]);
@@ -68,6 +74,7 @@ module ares_uart (
       rx_sync1_q <= 1'b1;
       rx_prev_q <= 1'b1;
       rx_busy_q <= 1'b0;
+      rx_first_q <= 1'b1;
       rx_bit_q <= 4'd0;
       rx_div_q <= 16'd0;
       rx_shift_q <= 8'd0;
@@ -96,14 +103,21 @@ module ares_uart (
       rx_sync0_q <= uart_rx;
       rx_sync1_q <= rx_sync0_q;
       rx_prev_q <= rx_sync1_q;
+      // Sample in the middle of every bit: the first sample lands 1.5 bit
+      // times after the start edge (middle of d0), then one per bit, and the
+      // ninth sample is the stop bit.  The previous version sampled at 0.5
+      // bit and stored the start bit as d0, so every received byte was
+      // shifted by one position -- nothing used RX until the B4 loader.
       if (!rx_busy_q && rx_prev_q && !rx_sync1_q) begin
-        rx_busy_q <= 1'b1;
-        rx_bit_q <= 4'd0;
-        rx_div_q <= (baud_q == 16'd0 ? 16'd1 : baud_q) >> 1;
+        rx_busy_q  <= 1'b1;
+        rx_first_q <= 1'b1;
+        rx_bit_q   <= 4'd0;
+        rx_div_q   <= 16'd0;
         rx_shift_q <= 8'd0;
       end else if (rx_busy_q) begin
-        if (rx_div_q >= (baud_q == 16'd0 ? 16'd1 : baud_q) - 16'd1) begin
-          rx_div_q <= 16'd0;
+        if (rx_div_q >= rx_period - 16'd1) begin
+          rx_div_q   <= 16'd0;
+          rx_first_q <= 1'b0;
           if (rx_bit_q < 4'd8) begin
             rx_shift_q[rx_bit_q[2:0]] <= rx_sync1_q;
             rx_bit_q <= rx_bit_q + 4'd1;
