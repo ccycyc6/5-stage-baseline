@@ -140,6 +140,32 @@ B4: mcycle=1790373925
 
 ---
 
+## B6-pre — 摄像头 → DDR3 → HDMI（独立视频位流，不含 SoC）
+
+- **日期**：2026-10-28   **提交**：`d2a2927`   **tag**：`board-video`
+- **来源**：ARES S2 工程逐文件搬入本仓库（`rtl/video/**` + `legacy/**` +
+  `fpga/pango/ip/ddr3/ddr3_test` + 三个 FDC + `flow_video.tcl`），一份没改
+- **位流**：`build/pango/video/generate_bitstream/video_fb_top.sbit`（9,188,552 B）
+- **sha256**：`F5D0EED618C8AF2B5BBA623CFDADB43844FB5239C797FCF1ADC3EE93D3625A61`
+- **资源**：LUT 5787/159800，REG 6761，**DRM 9/415**
+- **时序**：0 failing；ddrphy_sysclk WNS +2.0…+2.2 ns，sys_clk +28.9 ns，cmos1_pclk +8.2 ns
+- **全流程耗时**：3m48s
+- **用途**：在合入 SoC 之前，先用一个"只有视频"的位流证明
+  **摄像头 + DDR3 帧存 + HDMI 输出**在这块板子上是好的。
+  它同时是 [camera_hw_checklist.md](camera_hw_checklist.md) 第 6 节的功能判据。
+- **现象**：⏳ 待烧写
+
+```text
+（串口 115200，每 ~0.5 s 一行）
+S2 P=1 D=1 H=1 C=1 F=1 B=1 R=1 E=1 G=1 M=.... N=....
+```
+
+- **判据**：HDMI 出实时画面；`D=1`（DDR3 初始化）、`H=1`（HDMI）、`C=1`（摄像头 SCCB）、
+  `B=1`（framebuf 首帧写入）、`M≈N`（写侧与读回的中心像素接近）
+- **注意**：这个位流里没有 CPU/Tensor，UART 被 S2 的状态机占用；烧回 B4/B5 前先烧回对应位流。
+
+---
+
 ## B5 — 张量
 
 - **日期**：   **提交**：   **tag**：`board-b5`
