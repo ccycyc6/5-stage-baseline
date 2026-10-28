@@ -13,6 +13,7 @@ module tb_b3;
     board_cpu dut (
         .clk_27m (clk),
         .rst_n   (rst_n),
+        .uart_rx (1'b1),
         .uart_tx (uart_tx),
         .led     (led)
     );
@@ -80,3 +81,4 @@ module tb_b3;
         $finish;
     end
 endmodule
+

@@ -12,8 +12,10 @@
 // ---------------------------------------------------------------------------
 `timescale 1ns/1ps
 module ddr_bram #(
-    parameter integer WORDS = 2048,          // 128-bit lines -> 32 KiB
-    parameter integer IDXW  = 11
+    parameter integer WORDS = 2048,          // 128-bit lines -> WORDS*16 bytes
+    // Derived from WORDS: passing only WORDS must still index the whole array,
+    // otherwise the stack at 0x8002_0000 would alias onto the code.
+    parameter integer IDXW  = $clog2(WORDS)
 ) (
     input  wire         clk,
     input  wire         rst,
