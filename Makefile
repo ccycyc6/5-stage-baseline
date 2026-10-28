@@ -37,6 +37,7 @@ MT_RTL := \
   rtl/minitensor/tensor/Epilogue/tensor_epilogue_controller.sv \
   rtl/minitensor/memory/unified_buffer.sv \
   rtl/minitensor/memory/vpu_dma.sv \
+  rtl/minitensor/top/mt_fsm.sv \
   rtl/minitensor/top/mini_tensor_top.sv
 CORE_RTL := \
   rtl/core/ares_regfile.sv rtl/core/ares_csr.sv rtl/core/ares_bpu.sv \

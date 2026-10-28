@@ -44,28 +44,10 @@ module mini_tensor_top #(
   import tensor_pkg::*;
   import vpu_pkg::*;
 
-  typedef enum logic [2:0] {OP_LOAD, OP_STORE, OP_VECTOR, OP_TENSOR, OP_EPILOGUE} op_t;
-  typedef enum logic [3:0] {
-    S_IDLE,
-    S_WAIT_COMMIT,
-    S_DISPATCH,
-    S_DMA_START,
-    S_DMA_WAIT,
-    S_VEC_READ_A,
-    S_VEC_LOAD_A,
-    S_VEC_READ_B,
-    S_VEC_LOAD_B,
-    S_VEC_COMMAND,
-    S_VEC_WAIT,
-    S_TENSOR_START,
-    S_TENSOR_WAIT,
-    S_EPILOGUE_START,
-    S_EPILOGUE_WAIT,
-    S_RESULT
-  } state_t;
-
+  // The sequencer lives in mt_fsm; everything below is the datapath that it
+  // drives.  op_t / state_t come from minitensor_pkg.
   state_t state_q;
-  op_t op_q;
+  op_t    op_q;
   logic [X_ID_WIDTH-1:0] id_q;
   logic [X_HARTID_WIDTH-1:0] hartid_q;
   logic [4:0] rd_q;
@@ -78,6 +60,7 @@ module mini_tensor_top #(
   logic [UB_ADDR_WIDTH-1:0] ep_config_addr_q;
   logic [31:0] rs1_q, rs2_q;
   logic register_seen_q, committed_q, command_err_q;
+
 
   logic dma_cmd_valid, dma_cmd_ready, dma_cmd_write, dma_done;
   logic dma_ub_wr_en, dma_ub_rd_en;
@@ -185,11 +168,8 @@ module mini_tensor_top #(
     xif_rsp.result_err          = command_err_q;
   end
 
-  assign dma_cmd_valid = (state_q == S_DMA_START);
-  assign dma_cmd_write = (op_q == OP_STORE);
-
-  assign tensor_cmd_valid = (state_q == S_TENSOR_START);
-  assign ep_cmd_valid = (state_q == S_EPILOGUE_START);
+  // dma_cmd_valid / dma_cmd_write / tensor_cmd_valid / ep_cmd_valid /
+  // vector_cmd_valid are driven by mt_fsm.
 
   tensor_controller #(
     .UB_ADDR_WIDTH(UB_ADDR_WIDTH)
@@ -277,7 +257,6 @@ module mini_tensor_top #(
       ((state_q == S_VEC_LOAD_A) || (state_q == S_VEC_LOAD_B)) &&
       ub_mem_rd_valid;
   assign vector_load_addr = (state_q == S_VEC_LOAD_A) ? 5'd1 : 5'd2;
-  assign vector_cmd_valid = (state_q == S_VEC_COMMAND);
   assign vector_cmd_instr = make_vector_rtype(vec_funct3_q, 5'd3, 5'd1, 5'd2);
   assign vector_result_ready = (state_q == S_VEC_WAIT) && vector_result_match;
 
@@ -371,6 +350,10 @@ module mini_tensor_top #(
   assign ub_rd_valid = ub_mem_rd_valid;
   assign ub_rd_data = ub_mem_rd_data;
 
+  // Simulation-only sanity checks.  An always_ff block containing $fatal is
+  // what made Pango ADS abort with Flow-0189 on this module, so the whole block
+  // is compiled out of the FPGA build (ARES_FPGA is set by the PDS flow).
+`ifndef ARES_FPGA
   always_ff @(posedge clk) begin
     if (!rst) begin
       if (dma_ub_wr_en && (tensor_ub_wr_en || vector_result_fire))
@@ -385,135 +368,67 @@ module mini_tensor_top #(
         $fatal(1, "epilogue controller is busy outside epilogue top-level states");
     end
   end
+`endif
 
-  always_ff @(posedge clk) begin
-    if (rst) begin
-      state_q <= S_IDLE;
-      op_q <= OP_LOAD;
-      id_q <= '0;
-      hartid_q <= '0;
-      rd_q <= '0;
-      mem_addr_q <= '0;
-      ub_base_q <= '0;
-      tile_count_q <= '0;
-      vec_src_a_q <= '0;
-      vec_src_b_q <= '0;
-      vec_dst_q <= '0;
-      vec_funct3_q <= '0;
-      tensor_accumulate_q <= 1'b0;
-      ep_config_addr_q <= '0;
-      rs1_q <= '0;
-      rs2_q <= '0;
-      register_seen_q <= 1'b0;
-      committed_q <= 1'b0;
-      command_err_q <= 1'b0;
-    end else begin
-      case (state_q)
-        S_IDLE: begin
-          if (issue_fire) begin
-            id_q <= xif_req.issue_id;
-            hartid_q <= xif_req.issue_hartid;
-            rd_q <= issue_instr[11:7];
-            op_q <= issue_load ? OP_LOAD :
-                (issue_store ? OP_STORE :
-                (issue_tensor ? OP_TENSOR :
-                (issue_epilogue ? OP_EPILOGUE : OP_VECTOR)));
-            vec_funct3_q <= issue_instr[14:12];
-            register_seen_q <= 1'b0;
-            committed_q <= 1'b0;
-            command_err_q <= 1'b0;
-            state_q <= S_WAIT_COMMIT;
-          end
-        end
-        S_WAIT_COMMIT: begin
-          if (register_fire) begin
-            rs1_q <= xif_req.register_rs0;
-            rs2_q <= xif_req.register_rs1;
-            mem_addr_q <= xif_req.register_rs0;
-            ub_base_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
-            tile_count_q <= reg_rs1[15:8];
-            vec_src_a_q <= reg_rs0[UB_ADDR_WIDTH-1:0];
-            // Constant-range form on purpose: an indexed slice whose width is
-            // a parameter makes ADS fail with an internal error (Flow-0189).
-            // Keep slice syntax out of the comments too -- ADS chokes on it.
-            vec_src_b_q <= reg_rs0[2*UB_ADDR_WIDTH-1 : UB_ADDR_WIDTH];
-            vec_dst_q <= reg_rs1[UB_ADDR_WIDTH-1:0];
-            tensor_accumulate_q <= reg_rs1[TENSOR_GEMM_ACCUMULATE_BIT];
-            ep_config_addr_q <= reg_rs1[15:8];
-            register_seen_q <= 1'b1;
-            if (!register_match || !register_operands_valid)
-              command_err_q <= 1'b1;
-          end
-          if (commit_fire)
-            committed_q <= 1'b1;
+  // Sequencer (control) split out to keep the modules small enough for ADS.
+  mt_fsm #(
+    .UB_ADDR_WIDTH(UB_ADDR_WIDTH),
+    .COUNT_WIDTH  (COUNT_WIDTH)
+  ) u_fsm (
+    .clk,
+    .rst,
+    .issue_fire,
+    .issue_id(xif_req.issue_id),
+    .issue_hartid(xif_req.issue_hartid),
+    .issue_rd(issue_instr[11:7]),
+    .issue_funct3(issue_instr[14:12]),
+    .issue_load,
+    .issue_store,
+    .issue_tensor,
+    .issue_epilogue,
+    .register_fire,
+    .register_match,
+    .register_operands_valid,
+    .reg_rs0(reg_rs0),
+    .reg_rs1(reg_rs1),
+    .commit_fire,
+    .kill_fire,
+    .operands_valid,
+    .result_taken(xif_rsp.result_valid && xif_req.result_ready),
+    .dma_cmd_ready,
+    .dma_done,
+    .tensor_cmd_ready,
+    .tensor_done,
+    .ep_cmd_ready,
+    .ep_done,
+    .vector_cmd_ready,
+    .vector_load_valid,
+    .vector_load_ready,
+    .vector_result_fire,
+    .state_q,
+    .op_q,
+    .id_q,
+    .hartid_q,
+    .rd_q,
+    .mem_addr_q,
+    .ub_base_q,
+    .tile_count_q,
+    .vec_src_a_q,
+    .vec_src_b_q,
+    .vec_dst_q,
+    .vec_funct3_q,
+    .tensor_accumulate_q,
+    .ep_config_addr_q,
+    .rs1_q,
+    .rs2_q,
+    .register_seen_q,
+    .committed_q,
+    .command_err_q,
+    .dma_cmd_valid,
+    .dma_cmd_write,
+    .tensor_cmd_valid,
+    .ep_cmd_valid,
+    .vector_cmd_valid
+  );
 
-          if (kill_fire) begin
-            state_q <= S_IDLE;
-            register_seen_q <= 1'b0;
-            committed_q <= 1'b0;
-          end else if ((register_seen_q || register_fire) &&
-                       (committed_q || commit_fire)) begin
-            state_q <= S_DISPATCH;
-          end
-        end
-        S_DISPATCH: begin
-          if (command_err_q || !operands_valid) begin
-            command_err_q <= 1'b1;
-            state_q <= S_RESULT;
-          end else begin
-            state_q <= (op_q == OP_VECTOR) ? S_VEC_READ_A :
-                ((op_q == OP_TENSOR) ? S_TENSOR_START :
-                ((op_q == OP_EPILOGUE) ? S_EPILOGUE_START : S_DMA_START));
-          end
-        end
-        S_DMA_START: begin
-          if (dma_cmd_valid && dma_cmd_ready)
-            state_q <= S_DMA_WAIT;
-        end
-        S_DMA_WAIT: begin
-          if (dma_done)
-            state_q <= S_RESULT;
-        end
-        S_VEC_READ_A: state_q <= S_VEC_LOAD_A;
-        S_VEC_LOAD_A: begin
-          if (vector_load_valid && vector_load_ready)
-            state_q <= S_VEC_READ_B;
-        end
-        S_VEC_READ_B: state_q <= S_VEC_LOAD_B;
-        S_VEC_LOAD_B: begin
-          if (vector_load_valid && vector_load_ready)
-            state_q <= S_VEC_COMMAND;
-        end
-        S_VEC_COMMAND: begin
-          if (vector_cmd_valid && vector_cmd_ready)
-            state_q <= S_VEC_WAIT;
-        end
-        S_VEC_WAIT: begin
-          if (vector_result_fire)
-            state_q <= S_RESULT;
-        end
-        S_TENSOR_START: begin
-          if (tensor_cmd_valid && tensor_cmd_ready)
-            state_q <= S_TENSOR_WAIT;
-        end
-        S_TENSOR_WAIT: begin
-          if (tensor_done)
-            state_q <= S_RESULT;
-        end
-        S_EPILOGUE_START: begin
-          if (ep_cmd_valid && ep_cmd_ready)
-            state_q <= S_EPILOGUE_WAIT;
-        end
-        S_EPILOGUE_WAIT: begin
-          if (ep_done)
-            state_q <= S_RESULT;
-        end
-        S_RESULT: begin
-          if (xif_rsp.result_valid && xif_req.result_ready)
-            state_q <= S_IDLE;
-        end
-        default: state_q <= S_IDLE;
-      endcase
-    end
-  end
 endmodule

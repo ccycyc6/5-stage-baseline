@@ -47,6 +47,22 @@ package minitensor_pkg;
     logic        result_err;
   } xif_rsp_t;
 
+  // Command classes and top-level sequencer states live in the package so the
+  // controller and the datapath can share them without a second definition.
+  typedef enum logic [2:0] {
+    OP_LOAD, OP_STORE, OP_VECTOR, OP_TENSOR, OP_EPILOGUE
+  } op_t;
+
+  typedef enum logic [3:0] {
+    S_IDLE, S_WAIT_COMMIT, S_DISPATCH,
+    S_DMA_START, S_DMA_WAIT,
+    S_VEC_READ_A, S_VEC_LOAD_A, S_VEC_READ_B, S_VEC_LOAD_B,
+    S_VEC_COMMAND, S_VEC_WAIT,
+    S_TENSOR_START, S_TENSOR_WAIT,
+    S_EPILOGUE_START, S_EPILOGUE_WAIT,
+    S_RESULT
+  } state_t;
+
   localparam logic [6:0] MT_CUSTOM0_OPCODE = 7'b0001011;
   localparam logic [6:0] MT_LOAD_FUNCT7 = 7'b0000011;
   localparam logic [2:0] MT_LOAD_FUNCT3 = 3'b000;
