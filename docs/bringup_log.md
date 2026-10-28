@@ -12,7 +12,7 @@
 |---|---|---|---|---|---|---|---|
 | B0 | 厂商位流钉死板子 | ✅ PASS | 2026-10-28 | 厂商原版 | — | — | 板子/下载/串口正常 |
 | B1 | 最小位流（时钟/UART 活着） | ✅ PASS | 2026-10-28 | `284C6E38…` | 0/415 | +32.4 ns | 时钟/复位/UART/引脚/流程全部正常 |
-| B2 | CPU + ROM 打印 | ☐ | | | | | |
+| B2 | CPU + ROM 打印 | 🔶 位流就绪 | 2026-10-28 | `A5581886…` | 8/415 | +17.7 ns | 仿真 PASS，待上板 |
 | B3 | BRAM 读写自检 | ☐ | | | | | |
 | B4 | 串口 loader | ☐ | | | | | |
 | B5 | 张量上板 | ☐ | | | | | |
@@ -50,16 +50,24 @@
 
 ## B2 — CPU + ROM
 
-- **日期**：   **提交**：   **tag**：`board-b2`
-- **位流 sha256**：
-- **资源 / 时序**：DRM __/415，WNS __ ns
-- **现象**：
+- **日期**：2026-10-28   **提交**：`e789a33`   **tag**：待上板通过后打 `board-b2`
+- **位流**：`build/pango/soc/generate_bitstream/board_b2.sbit`（9,188,552 B）
+- **sha256**：`A5581886C2D0A28F5D8B1D9D91D0A1FAB18DD9CA75EC617537D24842538A4383`
+- **资源**：LUT 3597/159800 (2.25%)，REG 2768/319600，DRAM 189/39500，**DRM 8/415**
+- **时序**：setup WNS **+17.722 ns**，0 failing；hold slow WHS +0.128 ns；
+  hold **fast** 角 `-0.026 ns / 1 endpoint`（27 MHz 下无实际影响，已知边角；
+  如要收掉，在 FDC 加 `set_clock_uncertainty 0.100 -hold [get_clocks {sys_clk}]` 重跑）
+- **全流程耗时**：5m47s（compile 4s / synth 20s / dev_map 11s / pnr ~4m / bitgen 20s）
+- **上板前仿真门**：`sim/rtl/tb_b2.sv`（真实 SoC RTL + 生成的 boot_rom + 真实固件）
+  → `TB PASS: B2 banner decoded from the generated ROM`
+- **上板现象**：⏳ 待烧写
 
 ```text
-（待填：B2 OK / mcycle 递增）
+（待填：串口应每 ~1 s 出现一行 "B2 OK mcycle=000006A1" 之类）
 ```
 
-- **结论**：
+- **LED**：led[0] 闪、led[1] 常亮、**led[2] 高频闪**（CPU 在退休指令）、led[7:4] 随 PC 变化
+- **结论**：构建 + 仿真通过；上板待验证
 
 ---
 
